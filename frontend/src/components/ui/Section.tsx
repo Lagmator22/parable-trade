@@ -1,4 +1,3 @@
-// One page section: a small label on the left ("01 Launch"), the content on the right, a rule underneath.
 import type { ReactNode } from 'react';
 
 export function Section({ id, label, className = '', children }: { id: string; label: string; className?: string; children: ReactNode }) {

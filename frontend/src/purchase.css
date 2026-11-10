@@ -1,0 +1,54 @@
+.purchase-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 12px 24px; }
+.purchase-cols { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: 24px; align-items: start; }
+.purchase-list { display: flex; flex-direction: column; gap: 12px; }
+.purchase-row { display: grid; grid-template-columns: minmax(0, 1fr) 100px auto; gap: 16px; align-items: center; padding: 16px; text-decoration: none; }
+.purchase-row:hover { background: var(--hover); color: inherit; }
+.purchase-row strong { display: block; font-size: 18px; }
+
+.steps { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--ink); background: var(--card); }
+.steps li { padding: 14px; border-right: 1px solid var(--ink); font-size: 14px; font-weight: 700; color: var(--grey); }
+.steps li:last-child { border-right: 0; }
+.steps li span { display: block; font: 400 12px var(--mono); margin-bottom: 6px; }
+.steps li.done { background: var(--ink); color: var(--paper); border-right-color: var(--grey); }
+.steps li.now { color: var(--ink); box-shadow: inset 0 -4px 0 var(--ink); }
+.steps li.bad { background: var(--orange); color: #0b0b0b; }
+
+.waiting .actions { padding: 0 16px 16px; }
+.failed .actions { padding: 0 16px 16px; }
+.verdict.passed { border-color: var(--green); }
+.verdict.passed .box-head { color: var(--green); border-color: var(--green); }
+.verdict.failed, .box.failed { border-color: var(--orange); }
+.verdict.failed .box-head, .box.failed .box-head { color: var(--orange-text); border-color: var(--orange); }
+
+.kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.kv > div { padding: 12px 16px; border-bottom: 1px solid var(--rule); }
+.kv dt { font: 12px var(--mono); color: var(--grey); }
+.kv dd { font: 500 15px var(--mono); overflow-wrap: anywhere; }
+
+.license { border-color: var(--green); }
+.license .box-head { color: var(--green); border-color: var(--green); }
+.license-key { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; background: var(--green-wash); border-bottom: 1px solid var(--rule); }
+.license-key code { font-size: 18px; font-weight: 500; overflow-wrap: anywhere; }
+.license .say { padding: 12px 16px; max-width: none; }
+
+.trades .row.trade { grid-template-columns: 76px 92px minmax(0, 1.4fr) minmax(0, 2fr); }
+.trades .reason { color: var(--grey); font-size: 13px; }
+.trades .row.refused .reason { color: var(--orange-text); }
+.receipts .row.receipt { grid-template-columns: 190px minmax(0, 1fr) auto; }
+
+@media (max-width: 900px) {
+  .purchase-cols { grid-template-columns: 1fr; }
+  .steps { grid-template-columns: 1fr; }
+  .steps li { border-right: 0; border-bottom: 1px solid var(--ink); display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .steps li:last-child { border-bottom: 0; }
+  .steps li span { margin: 0; order: 2; }
+  .steps li.now { box-shadow: inset 4px 0 0 var(--ink); }
+}
+@media (max-width: 640px) {
+  .purchase-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .purchase-row > :nth-child(2) { display: none; }
+  .trades .row.trade { grid-template-columns: 84px minmax(0, 1fr); gap: 6px 12px; }
+  .trades .row.trade > :nth-child(n+3) { grid-column: 1 / -1; }
+  .receipts .row.receipt { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+  .stats.run-stats dd { font-size: 20px; }
+}

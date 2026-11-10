@@ -1,8 +1,6 @@
-// A plain line chart drawn as SVG: a few grid lines, one line per series, each line's name and latest value
-// written at its right end (so nobody has to match colors to a legend). No chart library needed.
 export type Line = { name: string; color: string; dashed?: boolean; points: [number, number][] };
 
-const W = 820, H = 260, LEFT = 58, RIGHT = 190, TOP = 14, BOTTOM = 28;
+const W = 820, H = 260, LEFT = 68, RIGHT = 190, TOP = 14, BOTTOM = 28;
 
 export function Chart({ lines, yFormat, xFormat, label, zero = false }: {
   lines: Line[]; yFormat: (v: number) => string; xFormat: (x: number) => string; label: string; zero?: boolean;
@@ -19,7 +17,6 @@ export function Chart({ lines, yFormat, xFormat, label, zero = false }: {
   const sx = (x: number) => LEFT + ((x - x0) / (x1 - x0)) * (W - LEFT - RIGHT);
   const sy = (y: number) => TOP + (1 - (y - y0) / (y1 - y0)) * (H - TOP - BOTTOM);
   const ticks = [0, 1, 2, 3].map(i => y0 + ((y1 - y0) * i) / 3);
-  // Spread the end labels apart vertically so two lines ending close together stay readable.
   const ends = drawn.map(l => ({ l, y: sy(l.points[l.points.length - 1][1]) })).sort((a, b) => a.y - b.y);
   ends.forEach((e, i) => { if (i > 0 && e.y - ends[i - 1].y < 15) e.y = ends[i - 1].y + 15; });
 

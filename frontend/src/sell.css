@@ -1,0 +1,11 @@
+.row.practice { grid-template-columns: minmax(0, 2fr) 110px 80px 120px 56px; align-items: center; }
+.row.my-listing { grid-template-columns: minmax(0, 1fr) 80px auto; align-items: center; }
+.row-actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; }
+.row-actions .btn { height: 40px; padding: 0 14px; font-size: 14px; }
+
+@media (max-width: 640px) {
+  .row.practice { grid-template-columns: minmax(0, 1fr) auto; }
+  .row.practice > :nth-child(2), .row.practice > :nth-child(5) { display: none; }
+  .row.my-listing { grid-template-columns: minmax(0, 1fr) auto; }
+  .row.my-listing .row-actions { grid-column: 1 / -1; justify-content: flex-start; }
+}

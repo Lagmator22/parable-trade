@@ -1,4 +1,3 @@
-// Buttons and button-looking links. On hover a fill slides in from the left (pure CSS, see style.css).
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react';
 import { Out } from './Glyphs';
 
@@ -12,7 +11,6 @@ export function LinkButton({ variant = 'line', icon, children, className = '', .
   return <a {...props} className={`btn btn-${variant} ${className}`}>{icon}<span>{children}</span></a>;
 }
 
-/** A small text link to an explorer page. Opens in a new tab. */
 export function OutLink({ href, children }: { href: string | null | undefined; children: ReactNode }) {
   if (!href) return null;
   return <a className="out-link" href={href} target="_blank" rel="noreferrer">{children}<Out size={13}/></a>;

@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     price_source: str = "live"
     bot_interval_s: float = 15
     ai_analyst_brain: str = "gemini:gemini-3.5-flash-lite"
+    parable_demo_seed: bool = False
 
     anthropic_api_key: str = ""
     bot_model: str = "claude-haiku-5-5"

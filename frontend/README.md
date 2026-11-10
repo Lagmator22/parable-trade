@@ -1,20 +1,14 @@
 # Parable frontend
 
-The dashboard is a React app built with Vite. FastAPI serves the production bundle from `frontend/dist/`.
+React 19 + TypeScript + Vite. FastAPI serves the production bundle from `frontend/dist/`.
 
-For local development, start the engine in one terminal from the repo root:
-
-```bash
-cd engine
-PARABLE_OFFLINE=1 WORLD_MOCK=1 uv run uvicorn parable.api:app --port 8000
-```
-
-In another terminal from the repo root:
+Development, from the repo root:
 
 ```bash
-cd frontend
-npm ci
-npm run dev
+cd engine && PARABLE_MOCK_PAYPAL=1 PARABLE_DEMO_SEED=1 uv run uvicorn parable.api:app --port 8000
+cd frontend && npm install && npm run dev
 ```
 
-Open the URL printed by Vite. The development server proxies API and approval requests to the local engine. Run `npm test` and `npm run build` from `frontend/` to test and build the site.
+The dev server proxies `/api` and `/paypal` to `http://localhost:8000` (override with `PARABLE_API`).
+
+`npm test` runs the Vitest suite and `npm run build` type-checks and bundles the site.

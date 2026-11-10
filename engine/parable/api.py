@@ -1,0 +1,77 @@
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+
+from parable import identity, market, prices, runs, webhooks
+from parable.api_support import install_error_handlers
+from parable.config import REPO_ROOT, get_settings
+from parable.db import get_db
+from parable.paypal_routes import router as paypal_router
+from parable.routes_market import router as market_router
+from parable.routes_runs import router as runs_router
+from parable.seed import seed_demo
+
+log = logging.getLogger("parable.app")
+
+FRONTEND_DIST = REPO_ROOT / "frontend" / "dist"
+NO_CACHE = {"Cache-Control": "no-cache, no-store, must-revalidate"}
+BUILD_HINT = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Parable</title></head>
+<body style="font-family: system-ui, sans-serif; max-width: 480px; margin: 48px auto; padding: 0 16px">
+<h1>Parable API is running</h1>
+<p>The frontend is not built yet. Run <code>cd frontend &amp;&amp; npm install &amp;&amp; npm run build</code>.</p>
+</body></html>"""
+
+
+def start_services():
+    get_db()
+    if get_settings().parable_demo_seed:
+        log.info("seeded %s demo listings", seed_demo())
+    prices.start_sampler()
+    manager = runs.get_manager()
+    market.install(manager)
+    manager.resume()
+    manager.start_poller()
+    market.settle_pending()
+    return manager, market.start_cancel_loop()
+
+
+def stop_services(manager: runs.RunManager, stop_cancel_loop) -> None:
+    stop_cancel_loop.set()
+    manager.shutdown()
+    prices.stop_sampler()
+
+
+def register_frontend(app: FastAPI, dist: Path) -> None:
+    index = dist / "index.html"
+
+    @app.get("/", include_in_schema=False)
+    def home():
+        if index.is_file():
+            return FileResponse(index, headers=NO_CACHE)
+        return HTMLResponse(BUILD_HINT)
+
+    if (dist / "assets").is_dir():
+        app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
+
+
+def create_app(dist: Path = FRONTEND_DIST) -> FastAPI:
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        manager, stop_cancel_loop = start_services()
+        yield
+        stop_services(manager, stop_cancel_loop)
+
+    app = FastAPI(title="Parable", lifespan=lifespan)
+    install_error_handlers(app)
+    for router in (identity.router, webhooks.router, market_router, runs_router, paypal_router):
+        app.include_router(router)
+    register_frontend(app, dist)
+    return app
+
+
+app = create_app()

@@ -1,14 +1,11 @@
-// This builds a static frontend and sends local API requests to the Python engine.
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 
+const engine = process.env.PARABLE_API || 'http://localhost:8000';
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  server: { proxy: {
-    '/api': process.env.PARABLE_API || 'http://127.0.0.1:8000',
-    '/world': process.env.PARABLE_API || 'http://127.0.0.1:8000',
-    '/classic': process.env.PARABLE_API || 'http://127.0.0.1:8000',
-    '/static': process.env.PARABLE_API || 'http://127.0.0.1:8000',
-  } },
+  server: { proxy: { '/api': engine, '/paypal': engine } },
+  test: { environment: 'jsdom', include: ['src/**/*.test.{ts,tsx}'] },
 });
