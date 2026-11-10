@@ -1,1 +1,0 @@
-{"name":"parable-arkiv-bridge","private":true,"type":"module","version":"0.1.0","scripts":{"start":"node index.mjs"},"dependencies":{"@arkiv-network/sdk":"^1.0.1","viem":"^2.57.16"}}
