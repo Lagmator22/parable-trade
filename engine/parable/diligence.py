@@ -126,7 +126,8 @@ def build_prompt(shown: dict) -> str:
         "You are a skeptical due-diligence analyst for a marketplace where buyers pay for AI trading bots only "
         "if the bot survives a paper-money probation. Judge the seller from these facts only. Never invent "
         "numbers; quote only numbers that appear in the facts. Flag any pitch claim the facts do not support, "
-        "such as guaranteed profits.\n"
+        "such as guaranteed profits. Write for an ordinary buyer in plain words: never mention JSON field names, "
+        "flags or underscores, and say 'runs' rather than 'finished_runs'.\n"
         f"Facts: {json.dumps(shown)}\n"
         'Reply with JSON only: {"risk": "low|medium|high", "headline": "<one sentence>", '
         '"findings": ["<3 to 5 short sentences>"], "red_flags": ["<short sentences, may be empty>"]}'
@@ -145,9 +146,13 @@ def numbers_in(text: str) -> set[str]:
     return {token.rstrip("0").rstrip(".") if "." in token else token for token in NUMBER_PATTERN.findall(text)}
 
 
-def invents_numbers(answer: dict, allowed_text: str) -> bool:
+def invented_numbers(answer: dict, allowed_text: str) -> set[str]:
     spoken = " ".join([answer["headline"], *answer["findings"], *answer["red_flags"]])
-    return not numbers_in(spoken) <= numbers_in(allowed_text)
+    return numbers_in(spoken) - numbers_in(allowed_text)
+
+
+def invents_numbers(answer: dict, allowed_text: str) -> bool:
+    return bool(invented_numbers(answer, allowed_text))
 
 
 def accept_answer(answer: dict | None, floor: str, allowed_text: str) -> dict | None:
@@ -163,6 +168,17 @@ def accept_answer(answer: dict | None, floor: str, allowed_text: str) -> dict | 
     return None if invents_numbers(checked, allowed_text) else {"risk": risk, **checked}
 
 
+def retry_prompt(prompt: str, first: dict, allowed_text: str) -> str:
+    try:
+        bad = invented_numbers({"headline": str(first.get("headline", "")), "findings": list(first.get("findings", [])),
+                                "red_flags": list(first.get("red_flags", []))}, allowed_text)
+    except TypeError:
+        bad = set()
+    problem = f"It used numbers that are not in the facts: {', '.join(sorted(bad))}. " if bad else ""
+    return (f"{prompt}\nYour previous answer was rejected. {problem}Use only numbers copied exactly from the facts, "
+            "give 3 to 5 findings, and reply with the JSON object only.")
+
+
 def merge_flags(red_flags: list[str], flags: list[str]) -> list[str]:
     return red_flags + [flag for flag in flags if flag not in red_flags]
 
@@ -173,7 +189,11 @@ def build_report(listing: dict) -> dict:
     baseline = rule_report(facts, flags)
     shown = prompt_facts(listing, facts)
     allowed = json.dumps(shown)
-    accepted = accept_answer(analyst.ask(build_prompt(shown)), baseline["risk"], allowed)
+    prompt = build_prompt(shown)
+    first = analyst.ask(prompt)
+    accepted = accept_answer(first, baseline["risk"], allowed)
+    if accepted is None and first:
+        accepted = accept_answer(analyst.ask(retry_prompt(prompt, first, allowed)), baseline["risk"], allowed)
     if accepted is None:
         return baseline
     accepted["red_flags"] = merge_flags(accepted["red_flags"], flags)

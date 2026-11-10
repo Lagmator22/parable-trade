@@ -149,3 +149,24 @@ def test_failing_analyst_never_breaks_the_report(monkeypatch):
 
     monkeypatch.setattr("parable.minds.chat_json", boom)
     assert diligence.report(make_listing()["id"])["by"] == "rules"
+
+
+def test_inventive_answer_gets_one_corrective_retry(price_box, monkeypatch):
+    seller = make_seller()
+    listing = make_listing(seller)
+    for _ in range(4):
+        finished_run(seller, listing)
+    prompts = []
+    answers = [ai_answer(headline="Solid record with 97 of 4 runs surviving."), ai_answer()]
+    monkeypatch.setattr(analyst, "ask", lambda prompt: prompts.append(prompt) or answers[len(prompts) - 1])
+    report = diligence.report(listing["id"])
+    assert len(prompts) == 2 and "97" in prompts[1] and "rejected" in prompts[1]
+    assert report["by"] == analyst.brain_name()
+
+
+def test_second_inventive_answer_still_falls_back(price_box, monkeypatch):
+    seller = make_seller()
+    listing = make_listing(seller)
+    finished_run(seller, listing)
+    monkeypatch.setattr(analyst, "ask", lambda prompt: ai_answer(headline="Made up 12345 numbers."))
+    assert diligence.report(listing["id"])["by"] == "rules"
