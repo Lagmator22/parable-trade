@@ -4,6 +4,8 @@ from parable import ledger, referee
 from parable.db import execute
 from parable.models import BotRules
 from parable.referee import RefereeError
+from parable.referee_math import sell_amount
+from run_support import PRICE, SYMBOL, agent_run, feed
 
 USD = 1_000_000
 
@@ -340,3 +342,197 @@ def test_seller_record_counts_probation_against_listing_threshold(price_box, mon
     record = referee.seller_record("s_a")
     assert record["probation_runs"] == 2
     assert record["probation_passed"] == 1 and record["probation_failed"] == 1
+
+
+def order(run_id: int, side: str, amount: int, **kw) -> dict:
+    return referee.place_order(run_id, side, amount, "test", **kw)
+
+
+def order_refusal(run_id: int, *args, **kw) -> str:
+    with pytest.raises(RefereeError) as caught:
+        order(run_id, *args, **kw)
+    return caught.value.reason
+
+
+def test_agent_run_columns_view_and_ledger(price_box):
+    run = agent_run()
+    assert run["version_id"] == "v_test000001" and run["symbol"] == SYMBOL and run["quote"] == "USDT"
+    assert run["units"] == 0 and run["cash_usd"] == 1000 * USD and run["spec_hash"] == "ab" * 32
+    assert "rules_json" not in run and run["rules"]["max_trade"] == 1000 * USD
+    started = ledger.entries(subject=f"run:{run['id']}")[0]
+    assert started["kind"] == "run.started" and started["data"]["version_id"] == "v_test000001"
+
+
+def test_track_purpose_is_allowed(price_box):
+    assert agent_run("track")["purpose"] == "track"
+
+
+def test_legacy_run_has_no_version(price_box):
+    assert open_run()["version_id"] is None
+
+
+def test_buy_integer_math_with_fee_and_slippage(price_box):
+    run = agent_run()
+    done = order(run["id"], "buy", 100 * USD, fee_bps=10, slippage_bps=5)
+    assert done["price"] == 300150000000 and done["units_delta"] == 3331667 and done["fee"] == 100_000
+    after = referee.get_run(run["id"])
+    assert after["cash_usd"] == 1000 * USD - 100 * USD - 100_000
+    assert after["units"] == 3331667 and after["entry_price"] == 300150000000 and after["high_water"] == 300150000000
+    assert after["equity_usd"] == after["cash_usd"] + 3331667 * PRICE // 10**10
+
+
+def test_sell_all_rounds_up_caps_and_clears_position(price_box):
+    run = agent_run()
+    order(run["id"], "buy", 100 * USD)
+    held = referee.load(run["id"])["units"]
+    done = order(run["id"], "sell", sell_amount(held, PRICE), fee_bps=10)
+    flat = referee.load(run["id"])
+    assert flat["units"] == 0 and flat["entry_price"] == 0 and flat["high_water"] == 0
+    assert done["units_delta"] == -held and done["amount"] <= 100 * USD
+    assert flat["cash_usd"] <= 1000 * USD
+
+
+def test_round_trip_never_creates_money_with_zero_costs(price_box):
+    run = agent_run()
+    for _ in range(5):
+        order(run["id"], "buy", 333_333 * 3 + 1)
+        order(run["id"], "sell", sell_amount(referee.load(run["id"])["units"], PRICE))
+    assert referee.load(run["id"])["cash_usd"] <= 1000 * USD
+
+
+def test_ledger_trade_data_for_agent_run(price_box):
+    run = agent_run()
+    order(run["id"], "buy", 10 * USD, fee_bps=10)
+    data = ledger.entries(subject=f"run:{run['id']}")[0]["data"]
+    assert set(data) == {"side", "amount", "price", "units_delta", "fee", "reason", "equity_after"}
+
+
+def test_refusals_for_agent_runs(price_box):
+    run = agent_run(max_trade=100 * USD)
+    rid = run["id"]
+    assert order_refusal(rid, "buy", 0) == "BadAmount"
+    assert order_refusal(rid, "buy", 1.5) == "BadAmount"
+    assert order_refusal(rid, "hold", 5) == "BadAmount"
+    assert order_refusal(rid, "buy", 101 * USD) == "OverTradeLimit"
+    assert order_refusal(rid, "sell", 5 * USD) == "InsufficientUnits"
+    assert referee.load(rid)["refusals"] == 5
+    assert referee.load(rid)["trades"] == 0
+
+
+def test_buy_needs_amount_plus_fee_in_cash(price_box):
+    run = agent_run(start_cash=100 * USD)
+    assert order_refusal(run["id"], "buy", 100 * USD, fee_bps=10) == "InsufficientCash"
+    assert order(run["id"], "buy", 99_900_099, fee_bps=10)["fee"] == 99_900
+
+
+def test_sells_are_exempt_from_max_trade(price_box):
+    run = agent_run(max_trade=100 * USD)
+    order(run["id"], "buy", 100 * USD)
+    assert order(run["id"], "sell", 500 * USD)["units_delta"] < 0
+
+
+def test_buy_below_one_unit_is_refused(price_box):
+    assert order_refusal(agent_run()["id"], "buy", 1) == "BadAmount"
+
+
+def test_stopped_agent_run_refuses_orders(price_box):
+    run = agent_run()
+    referee.stop(run["id"])
+    assert order_refusal(run["id"], "buy", USD) == "NotAlive"
+
+
+def test_agent_run_expiry_blocks_order_and_announces(price_box, monkeypatch):
+    run = agent_run(lease_seconds=60)
+    seen = []
+    referee.add_end_hook(seen.append)
+    monkeypatch.setattr(referee, "now", lambda: run["started_at"] + 61)
+    assert order_refusal(run["id"], "buy", USD) == "Expired"
+    assert [r["cause"] for r in seen] == ["expired"]
+
+
+def test_agent_loss_limit_ends_run(price_box):
+    run = agent_run(max_loss_bps=500)
+    order(run["id"], "buy", 1000 * USD)
+    price_box.set(2800)
+    ended = referee.check(run["id"])
+    assert ended["cause"] == "loss_limit" and ended["status"] == "dead"
+
+
+def test_mark_only_raises_high_water(price_box):
+    run = agent_run()
+    order(run["id"], "buy", 100 * USD)
+    referee.mark(run["id"], price=PRICE * 2)
+    referee.mark(run["id"], price=PRICE)
+    assert referee.load(run["id"])["high_water"] == PRICE * 2
+    referee.mark(run["id"], last_bar_t=1234)
+    assert referee.load(run["id"])["last_bar_t"] == 1234
+
+
+def test_record_point_and_points(price_box):
+    run = agent_run()
+    referee.record_point(run["id"], PRICE)
+    order(run["id"], "buy", 100 * USD)
+    referee.record_point(run["id"], PRICE * 2)
+    found = referee.points(run["id"])
+    assert [p[1:] for p in found] == [[1000 * USD, PRICE], [900 * USD + 3333333 * PRICE * 2 // 10**10, PRICE * 2]]
+    assert referee.points(run["id"], since=found[-1][0] + 1) == []
+
+
+def test_points_are_downsampled_keeping_ends(price_box):
+    run = agent_run()
+    for i in range(50):
+        execute("INSERT INTO run_points (run_id, t, equity, price) VALUES (?,?,?,?)", (run["id"], i, i, i))
+    found = referee.points(run["id"], limit=10)
+    assert len(found) == 10 and found[0][0] == 0 and found[-1][0] == 49
+    assert referee.points(run["id"], limit=1) == [[49, 49, 49]]
+    assert len(referee.points(run["id"], limit=500)) == 50
+
+
+def test_run_points_cap_drops_oldest_tenth(price_box, monkeypatch):
+    from parable.config import get_settings
+    monkeypatch.setenv("MAX_RUN_POINTS_PER_RUN", "20")
+    get_settings.cache_clear()
+    run = agent_run()
+    for i in range(20):
+        execute("INSERT INTO run_points (run_id, t, equity, price) VALUES (?,?,?,?)", (run["id"], i, i, i))
+    referee.record_point(run["id"], PRICE)
+    found = referee.points(run["id"], limit=100)
+    assert len(found) == 19 and found[0][0] == 2
+
+
+def test_public_reads_never_touch_the_provider(feed):
+    run = agent_run()
+    referee.record_point(run["id"], PRICE)
+    feed.calls = 0
+    assert referee.get_run(run["id"])["equity_usd"] == 1000 * USD
+    assert len(referee.list_runs()) == 1 and referee.points(run["id"])
+    assert referee.seller_record("s_test")["runs"] == 1
+    assert feed.calls == 0
+
+
+def test_view_uses_cached_quote_then_last_point_then_break_even(feed):
+    from parable.lab import markets
+    run = agent_run()
+    assert referee.get_run(run["id"])["equity_usd"] == 1000 * USD
+    markets.latest(SYMBOL)
+    feed.calls = 0
+    execute("UPDATE runs SET cash_usd = 0, units = 333333333, entry_price = ? WHERE id = ?", (PRICE, run["id"]))
+    assert referee.get_run(run["id"])["equity_usd"] == 333333333 * 3000 * 10**8 // 10**10
+    assert feed.calls == 0
+    markets.reset_providers(offline=True)
+    markets.register_provider(feed)
+    execute("INSERT INTO run_points (run_id, t, equity, price) VALUES (?,?,?,?)", (run["id"], 1, 1, PRICE * 2))
+    assert referee.get_run(run["id"])["equity_usd"] == 333333333 * 6000 * 10**8 // 10**10
+    execute("DELETE FROM run_points")
+    assert referee.get_run(run["id"])["equity_usd"] == 333333333 * 3000 * 10**8 // 10**10
+    assert feed.calls == 0
+
+
+def test_seller_record_counts_track_runs_separately(price_box):
+    live = agent_run("track")
+    early = agent_run("track")
+    agent_run("practice")
+    referee.stop(early["id"])
+    record = referee.seller_record("s_test")
+    assert record["track_runs"] == 2 and record["track_ended_early"] == 1 and record["practice_runs"] == 1
+    assert record["alive"] == 2 and live["status"] == "alive"

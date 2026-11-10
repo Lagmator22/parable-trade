@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from parable.errors import MarketError
+from parable.errors import LabError, MarketError
 from parable.identity import current_seller
 from parable.paypal import PayPalError
 from parable.referee import RefereeError, RunNotFound
@@ -37,6 +37,11 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(MarketError)
     async def market_error(request: Request, err: MarketError):
         return failure(err.status, err.detail)
+
+    @app.exception_handler(LabError)
+    async def lab_error(request: Request, err: LabError):
+        body = {"detail": err.detail, "code": err.code, **err.extra}
+        return JSONResponse(body, status_code=err.status)
 
     @app.exception_handler(PayPalError)
     async def paypal_error(request: Request, err: PayPalError):

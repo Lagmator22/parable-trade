@@ -1,5 +1,4 @@
 import logging
-import re
 from threading import Event
 from typing import Callable, Literal
 
@@ -9,9 +8,9 @@ from pydantic import BaseModel, Field
 
 from parable import prices, referee
 from parable.config import get_settings
-from parable.jev import jev_decide
 from parable.minds import (GOOGLE_BASE, LLM_TIMEOUT_S, claude_usable, extract_json, model_list,
                            note_claude_error)
+from parable.bot_agent import redact, run_agent
 from parable.models import PRESETS, BotRules, TradeDecision
 
 log = logging.getLogger("parable.bot")
@@ -39,10 +38,6 @@ class AiAnswer(BaseModel):
     action: Literal["buy", "sell", "hold"]
     amount_dollars: float = Field(default=0, ge=0, allow_inf_nan=False)
     reason: str
-
-
-def redact(err: Exception) -> str:
-    return f"{type(err).__name__}: " + re.sub(r"https?://\S+", "<url>", str(err))[:300]
 
 
 def eth_value_usd(state: dict) -> int:
@@ -160,6 +155,12 @@ def openai_style_decide(state: dict, base_url: str, api_key: str, model: str) ->
                           json={"model": model, "messages": [{"role": "user", "content": prompt}]})
     response.raise_for_status()
     return to_decision(extract_json(response.json()["choices"][0]["message"]["content"], "action"))
+
+
+def jev_decide(state: dict, model: str) -> TradeDecision:
+    from parable import jev
+
+    return jev.jev_decide(state, model)
 
 
 def build_brains() -> dict[str, dict]:

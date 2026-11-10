@@ -1,11 +1,12 @@
-import json
 import logging
 import threading
 from typing import Callable
 
 from parable import bot_runner, referee
 from parable.config import get_settings
-from parable.models import BotRules
+from parable.db import one
+from parable.errors import LabError, MarketError
+from parable.models import BotRules, RunRules
 
 log = logging.getLogger("parable.runs")
 
@@ -16,10 +17,17 @@ ALL_ALIVE_RUNS = 100_000
 _live_managers: list["RunManager"] = []
 
 
+def rules_of(run: dict) -> BotRules | RunRules:
+    if run.get("version_id"):
+        return RunRules.model_validate(run["rules"])
+    return BotRules.model_validate(run["rules"])
+
+
 class RunManager:
     def __init__(self, interval_s: float | None = None) -> None:
         self.interval_s = get_settings().bot_interval_s if interval_s is None else interval_s
         self.listeners: list[Callable[[dict], None]] = []
+        self.poll_hooks: list[Callable[[], None]] = []
         self.workers: dict[int, tuple[threading.Thread, threading.Event]] = {}
         self.workers_lock = threading.Lock()
         self.poller: threading.Thread | None = None
@@ -44,13 +52,39 @@ class RunManager:
         if worker is not None:
             worker[1].set()
 
-    def start(self, seller_id: str, rules: BotRules, purpose: str, name: str, listing_id: str | None = None,
-              purchase_id: str | None = None) -> dict:
-        run = referee.open_run(seller_id, rules, purpose, name, listing_id, purchase_id)
+    def add_poll_hook(self, hook: Callable[[], None]) -> None:
+        if hook not in self.poll_hooks:
+            self.poll_hooks.append(hook)
+
+    def check_practice_cap(self, account_id: str) -> None:
+        alive = referee.list_runs(seller_id=account_id, status="alive", purpose="practice", limit=ALL_ALIVE_RUNS)
+        if len(alive) >= get_settings().max_live_runs_per_account:
+            raise MarketError("too many live practice runs; stop one first", 429)
+
+    def start(self, account_id: str, rules: BotRules | RunRules, purpose: str, name: str,
+              listing_id: str | None = None, purchase_id: str | None = None) -> dict:
+        if purpose == "practice":
+            self.check_practice_cap(account_id)
+        run = referee.open_run(account_id, rules, purpose, name, listing_id, purchase_id)
         self.spawn(run["id"], rules)
         return run
 
-    def spawn(self, run_id: int, rules: BotRules) -> None:
+    def start_for_version(self, account_id: str, version_id: str, symbol: str, interval: str, purpose: str,
+                          name: str, *, start_cash: int | None = None, max_loss_bps: int = 2000,
+                          lease_seconds: int = 86_400, listing_id: str | None = None,
+                          purchase_id: str | None = None) -> dict:
+        from parable.lab import markets
+
+        version = one("SELECT spec_hash FROM agent_versions WHERE id = ?", (version_id,))
+        if version is None:
+            raise LabError(404, "not_found", "version not found")
+        cash = start_cash if start_cash is not None else get_settings().run_start_cash
+        rules = RunRules(version_id=version_id, spec_hash=version["spec_hash"], symbol=symbol,
+                         interval=interval, quote=markets.quote_currency(symbol), start_cash=cash,
+                         max_trade=cash, max_loss_bps=max_loss_bps, lease_seconds=lease_seconds)
+        return self.start(account_id, rules, purpose, name, listing_id, purchase_id)
+
+    def spawn(self, run_id: int, rules: BotRules | RunRules) -> None:
         with self.workers_lock:
             existing = self.workers.get(run_id)
             if existing is not None and existing[0].is_alive():
@@ -61,9 +95,12 @@ class RunManager:
             self.workers[run_id] = (thread, stop_event)
         thread.start()
 
-    def work(self, run_id: int, rules: BotRules, stop_event: threading.Event) -> None:
+    def work(self, run_id: int, rules: BotRules | RunRules, stop_event: threading.Event) -> None:
         try:
-            bot_runner.run_bot(run_id, rules, stop_event, self.interval_s)
+            if isinstance(rules, RunRules):
+                bot_runner.run_agent(run_id, stop_event, self.interval_s)
+            else:
+                bot_runner.run_bot(run_id, rules, stop_event, self.interval_s)
         except Exception:
             log.exception("bot thread for run %s crashed", run_id)
 
@@ -77,6 +114,11 @@ class RunManager:
             closed = referee.check(run["id"])
             if closed is not None:
                 ended.append(closed)
+        for hook in list(self.poll_hooks):
+            try:
+                hook()
+            except Exception:
+                log.exception("poll hook failed")
         return ended
 
     def poll_loop(self, every_s: float) -> None:
@@ -97,7 +139,7 @@ class RunManager:
         resumed = []
         for run in referee.list_runs(status="alive", limit=ALL_ALIVE_RUNS):
             if referee.check(run["id"]) is None:
-                self.spawn(run["id"], BotRules.model_validate(json.loads(run["rules_json"])))
+                self.spawn(run["id"], rules_of(run))
                 resumed.append(run["id"])
         return resumed
 

@@ -37,6 +37,25 @@ class Settings(BaseSettings):
     gemini_models: str = ""
     gemma_models: str = ""
 
+    twelve_data_key: str = ""
+    markets_offline: bool = False
+    ai_free_tries_per_day: int = 5
+    upload_max_bytes: int = 5_000_000
+    upload_max_rows: int = 200_000
+    max_live_runs_per_account: int = 5
+    max_run_points_per_run: int = 20_000
+    max_agents_per_account: int = 50
+    max_versions_per_agent: int = 100
+    max_datasets_per_account: int = 20
+    max_jobs_per_account: int = 2
+    benchmark_max_models: int = 6
+    rate_lab_per_minute: int = 30
+    rate_ai_per_minute: int = 10
+    rate_proofs_per_hour: int = 30
+    rate_purchases_per_hour: int = 20
+    track_lease_seconds: int = 2_592_000
+    run_start_cash: int = 10_000_000_000
+
 
 @lru_cache
 def get_settings() -> Settings:

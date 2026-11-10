@@ -90,11 +90,160 @@ CREATE TABLE IF NOT EXISTS webhook_events (
     received_at INTEGER,
     body_json TEXT
 );
+CREATE TABLE IF NOT EXISTS agents (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    symbol TEXT NOT NULL,
+    interval TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    latest_version_id TEXT,
+    created_at INTEGER,
+    updated_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS agent_versions (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    n INTEGER NOT NULL,
+    name TEXT,
+    summary TEXT,
+    spec_json TEXT NOT NULL,
+    spec_hash TEXT NOT NULL,
+    steps_text TEXT,
+    built_by TEXT,
+    created_at INTEGER,
+    UNIQUE (agent_id, n)
+);
+CREATE TABLE IF NOT EXISTS datasets (
+    id TEXT PRIMARY KEY,
+    owner_id TEXT NOT NULL,
+    name TEXT,
+    interval TEXT,
+    quote TEXT DEFAULT 'USD',
+    bars INTEGER,
+    start_t REAL,
+    end_t REAL,
+    data_hash TEXT,
+    bars_json TEXT,
+    created_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS bar_sets (
+    data_hash TEXT PRIMARY KEY,
+    bars_json TEXT NOT NULL,
+    created_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS proofs (
+    id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL,
+    version_id TEXT NOT NULL,
+    spec_hash TEXT NOT NULL,
+    listing_id TEXT,
+    requester_id TEXT,
+    claim_proof_id TEXT,
+    matched INTEGER,
+    symbol TEXT,
+    interval TEXT,
+    quote TEXT,
+    start_t REAL,
+    end_t REAL,
+    bars INTEGER,
+    data_hash TEXT,
+    source_kind TEXT,
+    engine_version TEXT,
+    metrics_json TEXT,
+    curve_json TEXT,
+    trades_json TEXT,
+    markers_json TEXT,
+    trades_count INTEGER,
+    result_hash TEXT,
+    ledger_seq INTEGER,
+    created_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS benchmarks (
+    id TEXT PRIMARY KEY,
+    agent_id TEXT NOT NULL,
+    owner_id TEXT NOT NULL,
+    steps_text TEXT,
+    symbol TEXT,
+    interval TEXT,
+    data_hash TEXT,
+    result_json TEXT,
+    created_at INTEGER
+);
+CREATE TABLE IF NOT EXISTS run_points (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id INTEGER NOT NULL,
+    t INTEGER NOT NULL,
+    equity INTEGER NOT NULL,
+    price INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS ai_usage (
+    visitor TEXT NOT NULL,
+    day TEXT NOT NULL,
+    n INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (visitor, day)
+);
 CREATE INDEX IF NOT EXISTS runs_seller ON runs(seller_id);
 CREATE INDEX IF NOT EXISTS runs_status ON runs(status);
 CREATE INDEX IF NOT EXISTS ledger_subject ON ledger(subject);
 CREATE INDEX IF NOT EXISTS purchases_order ON purchases(paypal_order_id);
 """
+
+
+NEW_COLUMNS = {
+    "runs": {
+        "version_id": "TEXT",
+        "spec_hash": "TEXT",
+        "symbol": "TEXT",
+        "interval": "TEXT",
+        "quote": "TEXT",
+        "units": "INTEGER DEFAULT 0",
+        "entry_price": "INTEGER DEFAULT 0",
+        "high_water": "INTEGER DEFAULT 0",
+        "last_bar_t": "INTEGER DEFAULT 0",
+    },
+    "listings": {
+        "version_id": "TEXT",
+        "mode": "TEXT DEFAULT 'hold'",
+        "trial_s": "INTEGER DEFAULT 0",
+        "max_loss_bps": "INTEGER DEFAULT 300",
+        "proof_id": "TEXT",
+        "benchmark_id": "TEXT",
+        "allow_test_drive": "INTEGER DEFAULT 1",
+        "symbol": "TEXT",
+        "interval": "TEXT",
+        "track_run_id": "INTEGER",
+    },
+    "purchases": {
+        "buyer_id": "TEXT",
+        "mode": "TEXT DEFAULT 'hold'",
+        "version_id": "TEXT",
+    },
+}
+
+NEW_INDEXES = """
+CREATE INDEX IF NOT EXISTS agents_owner ON agents(owner_id);
+CREATE INDEX IF NOT EXISTS versions_agent ON agent_versions(agent_id);
+CREATE INDEX IF NOT EXISTS versions_hash ON agent_versions(spec_hash);
+CREATE INDEX IF NOT EXISTS datasets_owner ON datasets(owner_id);
+CREATE INDEX IF NOT EXISTS proofs_version ON proofs(version_id);
+CREATE INDEX IF NOT EXISTS proofs_listing ON proofs(listing_id, kind);
+CREATE INDEX IF NOT EXISTS benchmarks_agent ON benchmarks(agent_id);
+CREATE INDEX IF NOT EXISTS run_points_run ON run_points(run_id, t);
+CREATE INDEX IF NOT EXISTS listings_version ON listings(version_id);
+CREATE INDEX IF NOT EXISTS purchases_buyer ON purchases(buyer_id);
+CREATE INDEX IF NOT EXISTS runs_version ON runs(version_id);
+"""
+
+
+def ensure_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> list[str]:
+    existing = {row[1] for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    added = []
+    for name, ddl in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+            added.append(name)
+    return added
 
 
 def connect(path: str | Path | None = None) -> sqlite3.Connection:
@@ -104,6 +253,9 @@ def connect(path: str | Path | None = None) -> sqlite3.Connection:
     if target != ":memory:":
         conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(SCHEMA)
+    for table, columns in NEW_COLUMNS.items():
+        ensure_columns(conn, table, columns)
+    conn.executescript(NEW_INDEXES)
     return conn
 
 

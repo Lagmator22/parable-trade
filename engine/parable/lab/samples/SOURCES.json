@@ -1,0 +1,74 @@
+{
+  "125497_1d.csv": {
+    "downloaded_at": "2026-11-10T23:00:33+00:00",
+    "interval": "1d",
+    "kind": "funds",
+    "name": "SBI SMALL CAP FUND - Direct Plan - Growth",
+    "note": "Daily NAV; open=high=low=close, volume 0.",
+    "provider": "mfapi",
+    "quote": "INR",
+    "rows": 1000,
+    "source_url": "https://api.mfapi.in/mf/125497",
+    "symbol": "mfapi:125497"
+  },
+  "BTCUSDT_1h.csv": {
+    "downloaded_at": "2026-11-10T23:00:31+00:00",
+    "interval": "1h",
+    "kind": "crypto",
+    "name": "Bitcoin",
+    "note": "Closed candles only; the still-open final candle was dropped.",
+    "provider": "binance",
+    "quote": "USDT",
+    "rows": 2000,
+    "source_url": "https://data-api.binance.vision/api/v3/klines?symbol=BTCUSDT&interval=1h",
+    "symbol": "binance:BTCUSDT"
+  },
+  "ETHUSDT_1d.csv": {
+    "downloaded_at": "2026-11-10T23:00:31+00:00",
+    "interval": "1d",
+    "kind": "crypto",
+    "name": "Ethereum",
+    "note": "Closed candles only; the still-open final candle was dropped.",
+    "provider": "binance",
+    "quote": "USDT",
+    "rows": 1000,
+    "source_url": "https://data-api.binance.vision/api/v3/klines?symbol=ETHUSDT&interval=1d",
+    "symbol": "binance:ETHUSDT"
+  },
+  "EURUSD_1d.csv": {
+    "downloaded_at": "2026-11-10T23:00:33+00:00",
+    "interval": "1d",
+    "kind": "forex",
+    "name": "Euro / US Dollar",
+    "note": "ECB reference rates published by Frankfurter; open=high=low=close, volume 0.",
+    "provider": "fx",
+    "quote": "USD",
+    "rows": 1000,
+    "source_url": "https://api.frankfurter.dev/v1/<start>..<end>?base=EUR&symbols=USD",
+    "symbol": "fx:EURUSD"
+  },
+  "PAXGUSDT_1d.csv": {
+    "downloaded_at": "2026-11-10T23:00:31+00:00",
+    "interval": "1d",
+    "kind": "gold",
+    "name": "Gold (PAX Gold)",
+    "note": "Closed candles only; the still-open final candle was dropped.",
+    "provider": "binance",
+    "quote": "USDT",
+    "rows": 700,
+    "source_url": "https://data-api.binance.vision/api/v3/klines?symbol=PAXGUSDT&interval=1d",
+    "symbol": "binance:PAXGUSDT"
+  },
+  "SOLUSDT_1h.csv": {
+    "downloaded_at": "2026-11-10T23:00:32+00:00",
+    "interval": "1h",
+    "kind": "crypto",
+    "name": "Solana",
+    "note": "Closed candles only; the still-open final candle was dropped.",
+    "provider": "binance",
+    "quote": "USDT",
+    "rows": 1500,
+    "source_url": "https://data-api.binance.vision/api/v3/klines?symbol=SOLUSDT&interval=1h",
+    "symbol": "binance:SOLUSDT"
+  }
+}

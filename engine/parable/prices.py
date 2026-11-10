@@ -1,3 +1,4 @@
+import inspect
 import logging
 import random
 import threading
@@ -21,6 +22,7 @@ SIM_PULL_DIVISOR = 20
 SIM_SEED = 1337
 HISTORY_LIMIT = 720
 SAMPLE_EVERY_S = 5
+LEGACY_SYMBOL = "binance:ETHUSDT"
 
 
 def to_price(amount: str | float | int) -> int:
@@ -50,7 +52,8 @@ READ_ERRORS = (httpx.HTTPError, KeyError, IndexError, StopIteration, TypeError, 
 
 class PriceState:
     def __init__(self) -> None:
-        self.override: Callable[[], int] | None = None
+        self.override: Callable[..., int] | None = None
+        self.override_arity = 0
         self.cached: tuple[float, int] | None = None
         self.last_good: int | None = None
         self.sim_price = SIM_START
@@ -100,7 +103,7 @@ def fetch_fresh() -> int:
 def price() -> int:
     override = _state.override
     if override is not None:
-        return int(override())
+        return call_override(override, LEGACY_SYMBOL)
     with _lock:
         now = time.monotonic()
         if _state.cached and now - _state.cached[0] < CACHE_TTL_S:
@@ -110,11 +113,66 @@ def price() -> int:
         return value
 
 
-def set_price_source(source: Callable[[], int] | None) -> None:
+def arity_of(source: Callable[..., int]) -> int:
+    try:
+        params = inspect.signature(source).parameters.values()
+    except (TypeError, ValueError):
+        return 0
+    return sum(p.default is p.empty and p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD) for p in params)
+
+
+def call_override(source: Callable[..., int], symbol: str) -> int:
+    return int(source(symbol)) if _state.override_arity else int(source())
+
+
+def set_price_source(source: Callable[..., int] | None) -> None:
     global _state
     with _lock:
         _state = PriceState()
         _state.override = source
+        _state.override_arity = arity_of(source) if source is not None else 0
+
+
+def to_scaled(value: float) -> int:
+    scaled = to_price(value)
+    if scaled <= 0:
+        raise ValueError("price must be positive")
+    return scaled
+
+
+def sim_for_symbol() -> int:
+    with _lock:
+        return sim_step()
+
+
+def price_for(symbol: str) -> int:
+    from parable.lab import markets
+
+    override = _state.override
+    if override is not None:
+        return call_override(override, symbol)
+    settings = get_settings()
+    if settings.price_source == "sim":
+        if settings.markets_offline:
+            try:
+                return to_scaled(markets.latest(symbol).price)
+            except Exception:
+                pass
+        return sim_for_symbol()
+    return to_scaled(markets.latest(symbol).price)
+
+
+def cached_price(symbol: str) -> int | None:
+    override = _state.override
+    if override is not None:
+        return call_override(override, symbol)
+    from parable.lab import markets
+
+    try:
+        found = markets.latest(symbol, cached_only=True)
+        return to_scaled(found.price) if found is not None else None
+    except Exception:
+        return None
 
 
 def record_sample() -> tuple[int, int]:

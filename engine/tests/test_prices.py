@@ -1,9 +1,11 @@
 import time
 
 import httpx
+import pytest
 
 from parable import prices
 from parable.config import get_settings
+from run_support import feed
 
 SIM_START = prices.SIM_START
 
@@ -159,3 +161,46 @@ def test_sampler_thread_collects_and_stops(wait_until):
     count = len(prices.history(10_000))
     time.sleep(0.05)
     assert len(prices.history(10_000)) == count
+
+
+def test_override_arity_is_inspected_for_both_paths():
+    prices.set_price_source(lambda: 5 * 10**8)
+    assert prices.price() == 5 * 10**8 and prices.price_for("fake:X") == 5 * 10**8
+    seen = []
+    prices.set_price_source(lambda symbol: seen.append(symbol) or 7 * 10**8)
+    assert prices.price_for("fake:X") == 7 * 10**8 and prices.cached_price("fake:Y") == 7 * 10**8
+    assert prices.price() == 7 * 10**8
+    assert seen == ["fake:X", "fake:Y", "binance:ETHUSDT"]
+
+
+def test_price_for_uses_latest_quote_live(feed, monkeypatch):
+    go_live(monkeypatch)
+    feed.price = 123.456789
+    assert prices.price_for("fake:ABC") == 12345678900
+    feed.price = 0
+    from parable.lab import markets
+    markets.clear_cache()
+    with pytest.raises(ValueError):
+        prices.price_for("fake:ABC")
+
+
+def test_price_for_sim_prefers_offline_fake_then_simulates(feed):
+    feed.price = 50.0
+    assert prices.price_for("fake:ABC") == 50 * 10**8
+    value = prices.price_for("binance:BTCUSDT")
+    assert value > 0 and value != 50 * 10**8
+
+
+def test_cached_price_never_fetches(feed):
+    from parable.lab import markets
+    assert prices.cached_price("fake:ABC") is None
+    assert feed.calls == 0
+    markets.latest("fake:ABC")
+    feed.calls = 0
+    assert prices.cached_price("fake:ABC") == 3000 * 10**8
+    assert feed.calls == 0
+
+
+def test_cached_price_unknown_symbol_is_none():
+    assert prices.cached_price("nope:ABC") is None
+    assert prices.cached_price("garbage") is None

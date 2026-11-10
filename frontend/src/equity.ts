@@ -13,7 +13,7 @@ function tradePoints(timeline: LedgerEntry[]): [number, number][] {
 }
 
 function flat(name: string, color: string, value: number, from: number, to: number): Line {
-  return { name, color, dashed: true, points: [[from, value], [to, value]] };
+  return { name, color, dashed: true, guide: true, points: [[from, value], [to, value]] };
 }
 
 export function equityLines(run: Run, timeline: LedgerEntry[], minReturnBps: number, nowSeconds: number): Line[] {

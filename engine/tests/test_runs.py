@@ -5,7 +5,9 @@ import pytest
 from parable import ledger, referee, runs
 from parable.db import execute
 from parable.models import BotRules
+from parable.errors import LabError, MarketError
 from parable.runs import RunManager
+from run_support import FakeSpec, agent_rules, feed, insert_version, install_fake_lab
 
 USD = 1_000_000
 
@@ -219,3 +221,116 @@ def test_shutdown_stops_all_threads_and_unhooks(wait_until):
     referee.stop(started[0]["id"])
     assert seen == []
     assert all(referee.get_run(r["id"])["status"] == "alive" for r in started[1:])
+
+
+@pytest.fixture
+def agent_calls(monkeypatch):
+    calls = []
+
+    def fake_agent(run_id, stop_event, interval_s):
+        calls.append(run_id)
+        stop_event.wait(5)
+
+    def fake_legacy(*args, **kwargs):
+        calls.append("legacy")
+
+    monkeypatch.setattr("parable.bot_runner.run_agent", fake_agent)
+    monkeypatch.setattr("parable.bot_runner.run_bot", fake_legacy)
+    return calls
+
+
+def test_start_dispatches_new_rules_to_run_agent(manager, agent_calls, wait_until, price_box):
+    run = manager.start("s_a", agent_rules(), "practice", "agent")
+    assert wait_until(lambda: agent_calls == [run["id"]])
+    assert run["version_id"] == "v_test000001"
+
+
+def test_start_dispatches_legacy_rules_to_run_bot(manager, agent_calls, wait_until, price_box):
+    manager.start("s_a", rules(), "practice", "legacy")
+    assert wait_until(lambda: agent_calls == ["legacy"])
+
+
+def test_practice_cap_counts_only_alive_practice_runs(manager, agent_calls, monkeypatch, price_box):
+    from parable.config import get_settings
+    monkeypatch.setenv("MAX_LIVE_RUNS_PER_ACCOUNT", "2")
+    get_settings.cache_clear()
+    first = manager.start("s_a", agent_rules(), "practice", "one")
+    manager.start("s_a", agent_rules(), "practice", "two")
+    with pytest.raises(MarketError) as caught:
+        manager.start("s_a", agent_rules(), "practice", "three")
+    assert caught.value.status == 429
+    manager.start("s_a", agent_rules(), "track", "track")
+    manager.start("s_a", agent_rules(), "probation", "probation")
+    manager.start("s_b", agent_rules(), "practice", "other account")
+    manager.stop(first["id"])
+    assert manager.start("s_a", agent_rules(), "practice", "freed")["status"] == "alive"
+
+
+def test_resume_handles_both_kinds(agent_calls, wait_until, price_box):
+    before = RunManager(interval_s=0.005)
+    runs.set_manager(before)
+    new_run = before.start("s_a", agent_rules(), "practice", "agent")
+    old_run = before.start("s_a", rules(), "probation", "legacy", purchase_id="p_1")
+    before.shutdown()
+    agent_calls.clear()
+    after = RunManager(interval_s=0.005)
+    runs.set_manager(after)
+    assert sorted(after.resume()) == sorted([new_run["id"], old_run["id"]])
+    assert wait_until(lambda: sorted(map(str, agent_calls)) == sorted([str(new_run["id"]), "legacy"]))
+
+
+def test_resume_loads_the_spec_by_version_id(monkeypatch, wait_until, price_box, feed):
+    loaded = []
+    signals = install_fake_lab(monkeypatch)
+    import parable.lab.spec as fake_spec
+    monkeypatch.setattr(fake_spec, "load_spec", lambda version_id: loaded.append(version_id) or FakeSpec())
+    before = RunManager(interval_s=0.005)
+    runs.set_manager(before)
+    before.start("s_a", agent_rules(version_id="v_resumed001"), "practice", "agent")
+    before.shutdown()
+    loaded.clear()
+    after = RunManager(interval_s=0.005)
+    runs.set_manager(after)
+    after.resume()
+    assert wait_until(lambda: loaded == ["v_resumed001"])
+    assert signals.decisions >= 0
+
+
+def test_start_for_version_builds_rules(manager, agent_calls, feed, price_box):
+    insert_version()
+    run = manager.start_for_version("s_a", "v_test000001", "fake:BTCUSDT", "1h", "track", "tracked",
+                                    listing_id="l_1", lease_seconds=500)
+    assert run["quote"] == "USDT" and run["purpose"] == "track" and run["listing_id"] == "l_1"
+    assert run["spec_hash"] == "ab" * 32 and run["cash_usd"] == 10_000 * USD
+    assert run["rules"]["max_trade"] == run["rules"]["start_cash"] == 10_000 * USD
+    assert run["rules"]["max_loss_bps"] == 2000 and run["expires_at"] - run["started_at"] == 500
+    custom = manager.start_for_version("s_a", "v_test000001", "fake:BTCUSDT", "1h", "probation", "p",
+                                       start_cash=50 * USD, max_loss_bps=300)
+    assert custom["cash_usd"] == 50 * USD and custom["rules"]["max_trade"] == 50 * USD
+
+
+def test_start_for_version_unknown_version(manager, feed):
+    with pytest.raises(LabError) as caught:
+        manager.start_for_version("s_a", "v_missing0001", "fake:BTCUSDT", "1h", "practice", "x")
+    assert caught.value.status == 404
+
+
+def test_poll_hooks_run_each_poll_and_are_guarded(manager, price_box):
+    calls = []
+
+    def broken():
+        raise RuntimeError("boom")
+
+    manager.add_poll_hook(broken)
+    manager.add_poll_hook(lambda: calls.append(1))
+    manager.add_poll_hook(manager.poll_hooks[1])
+    manager.poll_once()
+    manager.poll_once()
+    assert calls == [1, 1] and len(manager.poll_hooks) == 2
+
+
+def test_poll_once_ends_expired_agent_run(manager, agent_calls, monkeypatch, price_box):
+    run = manager.start("s_a", agent_rules(lease_seconds=60), "practice", "short")
+    monkeypatch.setattr(referee, "now", lambda: run["started_at"] + 61)
+    ended = manager.poll_once()
+    assert [r["cause"] for r in ended] == ["expired"]

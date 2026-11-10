@@ -26,6 +26,7 @@ def isolated_engine(monkeypatch):
     for key in BLANK_KEYS:
         monkeypatch.setenv(key, "")
     monkeypatch.setenv("PRICE_SOURCE", "sim")
+    monkeypatch.setenv("MARKETS_OFFLINE", "1")
     monkeypatch.setenv("PARABLE_MOCK_PAYPAL", "1")
     get_settings.cache_clear()
     clear_engine_state()

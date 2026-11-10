@@ -1,19 +1,31 @@
-export type Line = { name: string; color: string; dashed?: boolean; points: [number, number][] };
+export type Line = { name: string; color: string; dashed?: boolean; guide?: boolean; points: [number, number][] };
+
+export function chartDomain(lines: Line[], zero = false): { x0: number; x1: number; y0: number; y1: number } | null {
+  const drawn = lines.map(l => ({ ...l, points: l.points.filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1])) })).filter(l => l.points.length > 0);
+  if (drawn.length === 0) return null;
+  const main = drawn.filter(l => !l.guide);
+  const basis = main.length > 0 ? main : drawn;
+  const xs = drawn.flatMap(l => l.points.map(p => p[0]));
+  const ys = basis.flatMap(l => l.points.map(p => p[1]));
+  if (zero) ys.push(0);
+  let [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+  if (x1 === x0) x1 = x0 + 1;
+  const padY = (y1 - y0) * 0.12 || Math.max(Math.abs(y1) * 0.01, 1);
+  return { x0, x1, y0: y0 - padY, y1: y1 + padY };
+}
 
 const W = 820, H = 260, LEFT = 68, RIGHT = 190, TOP = 14, BOTTOM = 28;
 
 export function Chart({ lines, yFormat, xFormat, label, zero = false }: {
   lines: Line[]; yFormat: (v: number) => string; xFormat: (x: number) => string; label: string; zero?: boolean;
 }) {
-  const drawn = lines.filter(l => l.points.length > 0);
-  if (drawn.length === 0) return null;
-  const xs = drawn.flatMap(l => l.points.map(p => p[0]));
-  const ys = drawn.flatMap(l => l.points.map(p => p[1]));
-  if (zero) ys.push(0);
-  let [x0, x1, y0, y1] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
-  if (x1 === x0) x1 = x0 + 1;
-  const padY = (y1 - y0) * 0.12 || Math.max(Math.abs(y1) * 0.01, 1);
-  y0 -= padY; y1 += padY;
+  const domain = chartDomain(lines, zero);
+  if (!domain) return null;
+  const { x0, x1, y0, y1 } = domain;
+  const drawn = lines
+    .map(l => ({ ...l, points: l.points.filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1])) }))
+    .filter(l => l.points.length > 0)
+    .filter(l => !l.guide || l.points.every(p => p[1] >= y0 && p[1] <= y1));
   const sx = (x: number) => LEFT + ((x - x0) / (x1 - x0)) * (W - LEFT - RIGHT);
   const sy = (y: number) => TOP + (1 - (y - y0) / (y1 - y0)) * (H - TOP - BOTTOM);
   const ticks = [0, 1, 2, 3].map(i => y0 + ((y1 - y0) * i) / 3);

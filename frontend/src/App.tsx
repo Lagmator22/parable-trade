@@ -1,32 +1,28 @@
 import { useEffect, useState } from 'react';
-import { fetchInfo, fetchListings, fetchMe, fetchStats, logout, type Listing } from './api';
+import { fetchInfo, fetchMe, logout, type Listing, type PublicListing } from './api';
+import './build.css';
 import { useTheme } from './hooks/useTheme';
 import { usePoll } from './hooks/usePoll';
 import { useRoute } from './route';
-import { Agent } from './sections/Agent';
+import { AgentPage } from './sections/AgentPage';
+import { BuildPage } from './sections/build/BuildPage';
 import { Checkout } from './sections/Checkout';
-import { Hero } from './sections/Hero';
-import { Footer, How } from './sections/How';
+import { Footer } from './sections/How';
 import { Ledger } from './sections/Ledger';
-import { Market } from './sections/Market';
+import { MarketPage } from './sections/MarketPage';
+import { MinePage } from './sections/MinePage';
 import { PurchasePage } from './sections/Purchase';
 import { Purchases } from './sections/Purchases';
-import { Sell } from './sections/Sell';
 import { ModeBanner, Topbar } from './sections/Topbar';
 
 export default function App() {
   const route = useRoute();
   const { theme, toggle } = useTheme();
-  const info = usePoll(fetchInfo, { every: 10000 });
-  const stats = usePoll(fetchStats, { every: 4000 });
+  const info = usePoll(fetchInfo, { every: 15000 });
   const me = usePoll(fetchMe, { every: 20000 });
-  const listings = usePoll(fetchListings, { every: 5000 });
-  const [buying, setBuying] = useState<Listing | null>(null);
+  const [buying, setBuying] = useState<PublicListing | null>(null);
 
-  useEffect(() => {
-    if (route.page === 'market' && route.hash) document.getElementById('market')?.scrollIntoView();
-    else window.scrollTo(0, 0);
-  }, [route.page, route.id]);
+  useEffect(() => { window.scrollTo(0, 0); }, [route.page, route.id]);
 
   async function signOut() {
     await logout();
@@ -37,18 +33,15 @@ export default function App() {
     <Topbar route={route} me={me.data} theme={theme} onToggleTheme={toggle} onLogout={signOut}/>
     <ModeBanner mode={info.data?.paypal_mode ?? me.data?.paypal_mode}/>
     <main>
-      {route.page === 'market' && <>
-        <Hero stats={stats.data} ethPrice={info.data?.eth_price_usd}/>
-        <Agent listings={listings.data ?? []} onBuy={setBuying}/>
-        <Market listings={listings.data} error={listings.error} onBuy={setBuying}/>
-        <How/>
-      </>}
-      {route.page === 'sell' && <Sell me={me.data} info={info.data} listings={listings.data ?? []} onChanged={() => { listings.reload(); stats.reload(); }}/>}
+      {route.page === 'build' && <BuildPage key={route.id} agentId={route.id} me={me.data} info={info.data} onMe={me.reload}/>}
+      {route.page === 'market' && <MarketPage onBuy={setBuying}/>}
+      {route.page === 'agent' && <AgentPage id={route.id} key={route.id} me={me.data} onBuy={setBuying}/>}
+      {route.page === 'mine' && <MinePage me={me.data}/>}
       {route.page === 'purchases' && <Purchases/>}
       {route.page === 'purchase' && <PurchasePage id={route.id} key={route.id}/>}
       {route.page === 'ledger' && <Ledger/>}
     </main>
     <Footer/>
-    {buying && info.data && <Checkout listing={buying} info={info.data} onClose={() => setBuying(null)}/>}
+    {buying && info.data && <Checkout listing={buying as unknown as Listing} info={info.data} onClose={() => setBuying(null)}/>}
   </>;
 }
