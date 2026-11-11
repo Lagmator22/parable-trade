@@ -312,3 +312,15 @@ def test_approve_over_http_returns_the_purchase_view(seller_client, buyer_client
     done = buyer_client.post(f"/api/purchases/{started['purchase_id']}/approve",
                              json={"order_id": started["paypal_order_id"]})
     assert done.status_code == 200 and done.json()["status"] == "paid_out"
+
+
+def test_created_purchase_exposes_the_paypal_link_until_approval(manager):
+    from parable.purchase_views import get_purchase
+
+    buyer = buyer_account()
+    purchase = market.start_purchase(make_listing()["id"], buyer["id"])
+    view = get_purchase(purchase["purchase_id"], buyer["id"])
+    assert view["status"] == "created" and view["approve_url"] == purchase["approve_url"]
+    row = approve_and_confirm(purchase)
+    assert row["status"] != "created"
+    assert get_purchase(purchase["purchase_id"], buyer["id"])["approve_url"] == ""

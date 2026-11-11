@@ -8,6 +8,7 @@ from parable.lab.consts import ENGINE_VERSION
 from parable.lab.spec import load_spec
 from parable.listing_views import listing_summary
 from parable.listings import listing_row
+from parable.paypal import get_paypal
 from parable.run_views import public_run
 from parable.settlement import load_purchase
 
@@ -75,6 +76,12 @@ def license_download(purchase_id: str, buyer_id: str) -> tuple[str, str]:
     return name, json.dumps(license_, indent=2, sort_keys=True)
 
 
+def approve_url_for(purchase: dict) -> str:
+    if purchase["status"] != "created" or not purchase["paypal_order_id"]:
+        return ""
+    return get_paypal().order_approve_url(purchase["paypal_order_id"])
+
+
 def purchase_view(purchase: dict) -> dict:
     listing = listing_summary(purchase["listing_id"])
     verdict = json.loads(purchase["verdict_json"]) if purchase["verdict_json"] else None
@@ -92,6 +99,7 @@ def purchase_view(purchase: dict) -> dict:
         "run": public_run(run) if run else None, "verdict": verdict,
         "timeline": timeline_for(purchase["id"], purchase["run_id"]), "error": purchase["error"] or "",
         "created_at": purchase["created_at"], "updated_at": purchase["updated_at"], "license": license_for(purchase),
+        "approve_url": approve_url_for(purchase),
     }
 
 

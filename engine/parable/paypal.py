@@ -160,6 +160,12 @@ class PayPalClient:
     def get_order(self, order_id) -> dict:
         return self._call("GET", f"/v2/checkout/orders/{segment(order_id)}")
 
+    def order_approve_url(self, order_id) -> str:
+        try:
+            return approve_url(self.get_order(order_id))
+        except PayPalError:
+            return ""
+
     def authorize_order(self, order_id) -> dict:
         order = self._call(
             "POST",

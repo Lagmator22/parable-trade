@@ -16,7 +16,7 @@ from parable.referee_records import probation_passed, seller_record
 log = logging.getLogger("parable.referee")
 
 PURPOSES = ("practice", "probation", "track")
-END_CAUSES = ("expired", "loss_limit", "stopped")
+END_CAUSES = ("expired", "loss_limit", "stopped", "paused")
 REASON_LIMIT = 300
 
 class RunNotFound(LookupError):

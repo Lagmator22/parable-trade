@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from parable import identity, market, runs, webhooks
@@ -56,6 +56,10 @@ def register_frontend(app: FastAPI, dist: Path) -> None:
         if index.is_file():
             return FileResponse(index, headers=NO_CACHE)
         return HTMLResponse(BUILD_HINT)
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    def favicon():
+        return Response(status_code=204)
 
     if (dist / "assets").is_dir():
         app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")

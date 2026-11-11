@@ -203,3 +203,11 @@ def test_get_payout_returns_status_and_items():
     reply = {"batch_header": {"batch_status": "SUCCESS"}, "items": [{"payout_item_id": "I1"}]}
     client, _ = build({("GET", "/v1/payments/payouts/PB-1"): httpx.Response(200, json=reply)})
     assert client.get_payout("PB-1") == {"batch_status": "SUCCESS", "items": [{"payout_item_id": "I1"}]}
+
+
+def test_order_approve_url_reads_the_order_links():
+    links = [{"rel": "self", "href": "https://x/self"}, {"rel": "payer-action", "href": "https://pay/approve"}]
+    client, _ = build({("GET", "/v2/checkout/orders/O1"): httpx.Response(200, json={"id": "O1", "links": links}),
+                       ("GET", "/v2/checkout/orders/O2"): httpx.Response(404, json={"name": "RESOURCE_NOT_FOUND"})})
+    assert client.order_approve_url("O1") == "https://pay/approve"
+    assert client.order_approve_url("O2") == ""

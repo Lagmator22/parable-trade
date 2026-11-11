@@ -56,7 +56,7 @@ export function MarketPicker({ value, onSelect, initialKind = 'crypto' }: Props)
     {kind === 'mine' && <>
       <div className="chip-row">
         {datasets.map(d => <span key={d.id} className="chip-pair">
-          <button type="button" className="chip" aria-pressed={d.symbol === value} onClick={() => onSelect(datasetInfo(d))}><b>{d.name}</b><span>{d.bars} bars, {d.interval}</span></button>
+          <button type="button" className="chip" aria-pressed={d.symbol === value} onClick={() => onSelect(datasetInfo(d))}><b>{d.name}</b><span>{d.bar_count} bars, {d.interval}</span></button>
           <button type="button" className="chip-x" aria-label={`Delete ${d.name}`} onClick={() => remove(d)}>x</button>
         </span>)}
       </div>

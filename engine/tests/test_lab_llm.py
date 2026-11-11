@@ -250,3 +250,34 @@ def test_jev_choices_errors(monkeypatch, caplog):
     with pytest.raises(LabError) as err:
         llm.jev_choices("m", "s", QUESTIONS)
     assert "jev-secret-key" not in err.value.detail and "jev-secret-key" not in caplog.text
+
+
+def test_platform_retries_once_after_unavailable(monkeypatch):
+    set_env(monkeypatch, gemini_api_key="platform-key-xyz")
+    monkeypatch.setattr(llm, "RETRY_PAUSE", 0)
+    calls = []
+
+    def handler(request):
+        calls.append(1)
+        if len(calls) == 1:
+            return httpx.Response(503, text="busy")
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"x": 2}'}}]})
+
+    use(handler)
+    assert llm.chat_json(AiAuth(provider="platform", model="gemini:m"), "hi") == {"x": 2}
+    assert len(calls) == 2
+    calls.clear()
+    use(lambda r: (calls.append(1), httpx.Response(503, text="busy"))[1])
+    with pytest.raises(LabError) as err:
+        llm.chat_json(AiAuth(provider="platform", model="gemini:m"), "hi")
+    assert err.value.code == "model_unavailable" and len(calls) == 2
+
+
+def test_parse_reply_returns_outermost_object():
+    text = 'Here you go:\n```json\n{"name": "x", "params": {"n": {"value": 5}}, "entry": "close > 1"}\n```'
+    assert llm.parse_reply(text)["entry"] == "close > 1"
+    nested = '{"variants": [{"a": {"b": 1}}, {"a": {"b": 2}}]}'
+    assert list(llm.parse_reply(nested)) == ["variants"]
+    assert llm.parse_reply('<thinking>{"z": 1}</thinking>{"y": 2}') == {"y": 2}
+    with pytest.raises(LabError):
+        llm.parse_reply("no braces")

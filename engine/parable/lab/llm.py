@@ -1,5 +1,7 @@
+import json
 import logging
 import re
+import time
 from typing import Literal
 
 import httpx
@@ -26,6 +28,7 @@ DEFAULTS = {
 }
 NOT_CHAT = ("embedding", "whisper", "tts", "dall", "image", "audio", "realtime", "moderation", "transcribe", "search")
 BODY_CHARS = 200
+RETRY_PAUSE = 2.0
 
 _transport: httpx.BaseTransport | None = None
 
@@ -98,11 +101,28 @@ def call(method: str, url: str, key: str | None, timeout: float, **kwargs) -> di
     return data
 
 
+def whole_json(text: str) -> dict | None:
+    cleaned = re.sub(r"<(thought|thinking)>.*?</\1>", "", text, flags=re.DOTALL)
+    cleaned = cleaned.replace("```json", "").replace("```", "").strip()
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(cleaned):
+        if char == "{":
+            try:
+                candidate, _ = decoder.raw_decode(cleaned[index:])
+            except ValueError:
+                continue
+            if isinstance(candidate, dict):
+                return candidate
+    return None
+
+
 def parse_reply(text: str) -> dict:
-    try:
-        found = minds.extract_json(text)
-    except ValueError:
-        found = None
+    found = whole_json(text)
+    if found is None:
+        try:
+            found = minds.extract_json(text)
+        except ValueError:
+            found = None
     if found is None:
         raise LabError(502, "bad_output", "the model did not return JSON")
     return found
@@ -151,15 +171,23 @@ def platform_text(model_id: str, prompt: str, system: str | None, timeout: float
     return openai_style(GOOGLE_COMPAT, key, model, full, None, timeout, False)
 
 
-def chat_json(auth: AiAuth, prompt: str, *, system: str | None = None, timeout: float = 45) -> dict:
-    key = auth.key
-    if auth.provider == "platform":
+def platform_reply(model: str, prompt: str, system: str | None, timeout: float) -> str:
+    for attempt in (1, 2):
         try:
-            text = platform_text(auth.model, prompt, system, timeout)
+            return platform_text(model, prompt, system, timeout)
         except LabError as err:
             if err.code == "bad_key":
                 raise LabError(503, "model_unavailable", "that model is not available right now") from None
-            raise
+            if err.code != "model_unavailable" or attempt == 2:
+                raise
+            time.sleep(RETRY_PAUSE)
+    raise LabError(503, "model_unavailable", "that model is not available right now")
+
+
+def chat_json(auth: AiAuth, prompt: str, *, system: str | None = None, timeout: float = 45) -> dict:
+    key = auth.key
+    if auth.provider == "platform":
+        text = platform_reply(auth.model, prompt, system, timeout)
     elif not key:
         raise LabError(401, "bad_key", "no API key was provided")
     elif auth.provider == "openai":

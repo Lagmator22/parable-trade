@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from lab_support import install_fake, make_bars
+from lab_support import FakeProvider, install_fake, make_bars
 from parable import api, ledger, market, proofs, seed
 from parable.config import get_settings
 from parable.lab import markets
@@ -13,6 +13,8 @@ def go_online(monkeypatch) -> None:
     codes = ("BTCUSDT", "ETHUSDT", "PAXGUSDT", "SOLUSDT")
     install_fake(provider_id="binance", intervals=("1s", "1h", "4h", "1d"),
                  bars_by_code={code: make_bars(500, seed=number + 1) for number, code in enumerate(codes)})
+    markets.register_provider(FakeProvider(provider_id="fx", kinds=("forex",), quote="USD", intervals=("1d",),
+                                           bars_by_code={"EURUSD": make_bars(500, interval_s=86400, seed=9)}))
 
 
 def test_offline_seed_uses_bundled_sample_data_only(manager):
@@ -47,13 +49,13 @@ def test_online_seed_uses_live_symbols_and_adds_the_fast_demo(manager, monkeypat
     go_online(monkeypatch)
     assert seed.seed_demo() == 7
     views = {view["title"]: view for view in market.list_listings()}
-    live = [view for view in views.values() if view["symbol"].startswith("binance:")]
+    live = [view for view in views.values() if not view["symbol"].startswith("sample:")]
     assert len(live) == 7 and {view["data"]["source_kind"] for view in live} == {"market"}
     assert all(view["track"] is not None and view["track"]["status"] == "alive" for view in live)
     assert {view["mode"] for view in live} == {"hold", "instant"}
     fast = next(view for title, view in views.items() if title.startswith("Fast Demo"))
     assert (fast["symbol"], fast["interval"], fast["mode"], fast["trial_s"]) == ("binance:BTCUSDT", "1s", "hold", 120)
-    assert {"binance:BTCUSDT", "binance:ETHUSDT", "binance:PAXGUSDT", "binance:SOLUSDT"} <= {v["symbol"] for v in live}
+    assert {"binance:BTCUSDT", "binance:ETHUSDT", "binance:PAXGUSDT", "binance:SOLUSDT", "fx:EURUSD"} <= {v["symbol"] for v in live}
 
 
 def test_online_seed_falls_back_to_samples_when_binance_is_down(manager, monkeypatch):

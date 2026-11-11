@@ -11,6 +11,7 @@ export function UploadBox({ onReady }: { onReady: (d: Dataset) => void }) {
   const [over, setOver] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [notes, setNotes] = useState<string[]>([]);
   const [draft, setDraft] = useState<Draft | null>(null);
 
   const fail = (e: unknown) => setError(e instanceof ApiError && e.status === 401 ? 'Sign in to upload data.' : e instanceof Error ? e.message : 'Upload failed');
@@ -21,7 +22,7 @@ export function UploadBox({ onReady }: { onReady: (d: Dataset) => void }) {
     setError('');
     try {
       const result = await uploadDataset(file, file.name.replace(/\.[^.]+$/, ''));
-      if (result.status === 'ready') onReady(result.dataset);
+      if (result.status === 'ready') { setNotes(result.warnings ?? []); onReady(result.dataset); }
       else setDraft({ draft_id: result.draft_id, columns: result.columns, preview: result.preview, mapping: result.suggestion ?? {} });
     } catch (e) { fail(e); }
     setBusy(false);
@@ -76,6 +77,7 @@ export function UploadBox({ onReady }: { onReady: (d: Dataset) => void }) {
         <Button disabled={busy} onClick={ai}>Match with AI</Button>
       </div>
     </div>}
+    {notes.length > 0 && <p className="say">{notes.slice(0, 2).join(' ')}</p>}
     {error && <p className="say bad" role="alert">{error}</p>}
   </div>;
 }

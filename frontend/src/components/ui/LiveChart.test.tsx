@@ -3,7 +3,7 @@ import { act } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { charts } from '../../test/chartMock';
 import { mount } from '../../test/mount';
-import { LiveChart, cleanSeries, type LiveChartHandle } from './LiveChart';
+import { LiveChart, cleanSeries, tick, type LiveChartHandle } from './LiveChart';
 
 vi.mock('lightweight-charts', async () => await import('../../test/chartMock'));
 
@@ -11,6 +11,12 @@ const bars = [[3, 1, 2, 0.5, 1.5, 10], [1, 1, 2, 0.5, 1.2, 10], [1, 1, 2, 0.5, 1
 
 describe('LiveChart', () => {
   beforeEach(() => { charts.length = 0; document.documentElement.removeAttribute('data-theme'); });
+
+  it('uses clock ticks on short spans and dates on long ones', () => {
+    expect(tick(1_700_000_000, 600)).toMatch(/\d\d:\d\d:\d\d/);
+    expect(tick(1_700_000_000, 7200)).toMatch(/^\d\d:\d\d$/);
+    expect(tick(1_700_000_000, 10 * 86400)).not.toMatch(/:/);
+  });
 
   it('sorts and de-duplicates data', () => {
     expect(cleanSeries([[3, 1], [1, 2], [1, 5]]).map(r => r.join(':'))).toEqual(['1:5', '3:1']);
@@ -27,6 +33,28 @@ describe('LiveChart', () => {
     expect(chart.series.some(s => s.kind === 'volume')).toBe(true);
     await view.unmount();
     expect(chart.removed).toBe(true);
+  });
+
+  it('drops marker labels when there are many markers', async () => {
+    const many = Array.from({ length: 14 }, (_, i) => ({ t: 1 + (i % 3) * 0.5, side: 'buy' as const, text: 'entry' }));
+    const view = await mount(<LiveChart label="Price" series={[{ id: 'p', kind: 'candles', name: 'P', data: bars }]} markers={many}/>);
+    const candles = charts[0].series.find(s => s.kind === 'candles')!;
+    expect((candles.markers as { text: string }[]).every(m => m.text === '')).toBe(true);
+    await view.unmount();
+  });
+
+  it('keeps appended points when the parent re-renders', async () => {
+    const ref = createRef<LiveChartHandle>();
+    const data: [number, number][] = [[1, 100], [2, 101]];
+    const spec = [{ id: 'e', kind: 'line' as const, name: 'E', data }];
+    const view = await mount(<LiveChart ref={ref} label="Eq" series={spec} priceLines={[{ price: 100, label: 'A' }]}/>);
+    const line = charts[0].series[0];
+    act(() => { ref.current!.append('e', [3, 102]); });
+    expect(line.updates).toHaveLength(1);
+    const before = line.data;
+    await view.rerender(<LiveChart ref={ref} label="Eq" series={spec} priceLines={[{ price: 100, label: 'A' }]}/>);
+    expect(line.data).toBe(before);
+    await view.unmount();
   });
 
   it('rebases lines to percent and appends points', async () => {

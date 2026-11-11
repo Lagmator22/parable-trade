@@ -24,7 +24,7 @@ ASSETS = {
     "eth": {"live": ("binance:ETHUSDT", "4h"), "sample": ("sample:ETHUSDT", "1d")},
     "gold": {"live": ("binance:PAXGUSDT", "1h"), "sample": ("sample:PAXGUSDT", "1d")},
     "sol": {"live": ("binance:SOLUSDT", "1h"), "sample": ("sample:SOLUSDT", "1h")},
-    "eur": {"live": None, "sample": ("sample:EURUSD", "1d")},
+    "eur": {"live": ("fx:EURUSD", "1d"), "sample": ("sample:EURUSD", "1d")},
 }
 
 AGENTS = (
@@ -39,8 +39,7 @@ AGENTS = (
     {"seller": "dana", "asset": "btc", "template": "macd", "title": "Bitcoin MACD Pulse", "price_cents": 4900,
      "pitch": "Trades Bitcoin MACD momentum crossovers with fixed risk."},
     {"seller": "dana", "asset": "eur", "template": "bollinger", "title": "Euro Band Trader", "price_cents": 900,
-     "pitch": "Trades the euro against the dollar when price stretches outside its Bollinger bands.",
-     "fallback_asset": "eth"},
+     "pitch": "Trades the euro against the dollar when price stretches outside its Bollinger bands."},
 )
 
 FAST_DEMO = {"seller": "priya", "asset": "btc", "template": "trend", "title": "Fast Demo Agent (1s, 2-minute hold)",
@@ -58,7 +57,7 @@ def seed_sellers() -> dict[str, dict]:
 
 def fetch(symbol: str, interval: str) -> list | None:
     try:
-        bars = markets.candles(symbol, interval, BARS_WANTED)
+        bars = markets.closed_candles(symbol, interval, BARS_WANTED)
     except Exception as err:
         log.info("seed could not fetch %s %s: %s", symbol, interval, type(err).__name__)
         return None
@@ -74,8 +73,6 @@ def choose_data(spec: dict, online: bool) -> tuple[str, str, list] | None:
     options = []
     if online and asset["live"]:
         options.append(asset["live"])
-    if online and spec.get("fallback_asset") and not asset["live"]:
-        options.append(ASSETS[spec["fallback_asset"]]["live"])
     options.append(asset["sample"])
     for symbol, interval in options:
         bars = fetch(symbol, interval)

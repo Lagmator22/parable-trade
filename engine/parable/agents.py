@@ -173,7 +173,7 @@ def resolve_data(account_id: str | None, symbol: str | None, interval: str | Non
     else:
         if not symbol or not interval:
             raise LabError(400, "bad_request", "symbol and interval are required")
-        bars = markets.candles(symbol, interval, int(limit), start, end)
+        bars = markets.closed_candles(symbol, interval, int(limit), start, end)
         meta = {"symbol": symbol, "interval": interval, "quote": markets.quote_currency(symbol),
                 "source_kind": markets.source_kind(symbol)}
     if len(bars) < MIN_BARS:

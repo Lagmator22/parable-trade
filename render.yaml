@@ -1,0 +1,59 @@
+services:
+  - type: web
+    name: parable
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter
+    region: oregon
+    healthCheckPath: /api/info
+    autoDeploy: true
+    disk:
+      name: parable-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: DATABASE_PATH
+        value: /var/data/parable.db
+      - key: PAYPAL_ENV
+        value: sandbox
+      - key: PARABLE_MOCK_PAYPAL
+        value: "0"
+      - key: PARABLE_DEMO_SEED
+        value: "1"
+      - key: PRICE_SOURCE
+        value: live
+      - key: MARKETS_OFFLINE
+        value: "0"
+      - key: PLATFORM_FEE_BPS
+        value: "1000"
+      - key: AI_FREE_TRIES_PER_DAY
+        value: "5"
+      - key: AI_ANALYST_BRAIN
+        value: gemini:gemini-3.5-flash-lite
+      - key: JEV_MODELS
+        value: gemma-4-31b-it,deepseek-v4.1-flash
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PAYPAL_WEBHOOK_ID
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODELS
+        sync: false
+      - key: GEMMA_MODELS
+        sync: false
+      - key: AUTOLOOPS_API_KEY
+        sync: false
+      - key: TWELVE_DATA_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: CLAUDE_MODELS
+        sync: false

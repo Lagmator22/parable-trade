@@ -83,3 +83,17 @@ test('an instant order that errored after capture offers a retry', async () => {
   expect([...view.host.querySelectorAll('button')].some(b => b.textContent === 'Retry')).toBe(true);
   await view.unmount();
 });
+
+test('a purchase left in created sends the buyer back to PayPal', async () => {
+  current = purchase({ status: 'created', run: null, approve_url: 'https://paypal.test/approve?order=O1' });
+  const view = await mount(<PurchasePage id="p_1"/>);
+  await flush(6);
+  const link = [...view.host.querySelectorAll('a')].find(a => a.textContent === 'Continue in PayPal') as HTMLAnchorElement;
+  expect(link.getAttribute('href')).toBe('https://paypal.test/approve?order=O1');
+  current = purchase({ status: 'created', run: null });
+  await view.unmount();
+  const again = await mount(<PurchasePage id="p_1"/>);
+  await flush(6);
+  expect([...again.host.querySelectorAll('a')].some(a => a.textContent === 'Continue in PayPal')).toBe(false);
+  await again.unmount();
+});

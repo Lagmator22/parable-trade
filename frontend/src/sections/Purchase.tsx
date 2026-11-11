@@ -49,7 +49,10 @@ function Waiting({ purchase }: { purchase: PurchaseView }) {
   return <div className="box waiting">
     <div className="box-head"><span>Waiting for your PayPal approval</span></div>
     <p className="verdict-text">Nothing has been charged. An order that is never approved is cancelled.</p>
-    <div className="actions"><a className="btn btn-solid" href={`#agent/${purchase.listing.id}`}><span>Back to the agent</span></a></div>
+    <div className="actions">
+      {purchase.approve_url && <a className="btn btn-solid" href={purchase.approve_url}><span>Continue in PayPal</span></a>}
+      <a className="btn" href={`#agent/${purchase.listing.id}`}><span>Back to the agent</span></a>
+    </div>
   </div>;
 }
 

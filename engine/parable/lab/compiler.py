@@ -81,6 +81,10 @@ def repair_params(data: dict) -> None:
 def to_spec(raw, symbol: str, interval: str, built_by: str) -> StrategySpec:
     if not isinstance(raw, dict):
         raise SpecError(["the answer was not a JSON object"])
+    if "entry" not in raw:
+        inner = [v for v in raw.values() if isinstance(v, dict) and "entry" in v]
+        if len(inner) == 1:
+            raw = inner[0]
     data = {k: raw[k] for k in SPEC_KEYS if k in raw}
     data["name"] = str(data.get("name") or "Untitled")[:60]
     data["summary"] = str(data.get("summary") or "")[:300]

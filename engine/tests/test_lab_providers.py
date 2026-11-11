@@ -235,7 +235,7 @@ def test_yahoo_chart_parsing_drops_null_rows():
     bars = YahooProvider(mock(handler)).candles("AAPL", "1d", 10, None, None)
     assert bars == [[1_700_000_000.0, 1.0, 2.0, 0.5, 1.5, 100.0], [1_700_086_400.0, 2.0, 3.0, 1.0, 2.5, 0.0],
                     [1_700_259_200.0, 4.0, 5.0, 3.0, 4.5, 400.0]]
-    assert seen["interval"] == "1d" and seen["range"] == "max"
+    assert seen["interval"] == "1d" and seen["range"] == "10y"
     bars = YahooProvider(mock(handler)).candles("AAPL", "1h", 10, 1_700_000_000, 1_700_300_000)
     assert seen["interval"] == "60m" and seen["period1"] == "1700000000" and bars
 

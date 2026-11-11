@@ -246,3 +246,16 @@ def test_sample_provider_is_not_live_and_cached_only_latest_never_fetches():
     assert markets.latest("sample:BTCUSDT", cached_only=True) is None
     with pytest.raises(MarketDataError):
         markets.candles("sample:BTCUSDT", "1d", 10)
+
+
+def test_closed_candles_drops_the_forming_bar(fake_market):
+    bars = make_bars(40, start_t=1_700_000_000, interval_s=3600)
+    fake_market.bars_by_code["BTCUSDT"] = bars
+    markets.set_clock(lambda: bars[-1][0] + 1800)
+    try:
+        closed = markets.closed_candles("fake:BTCUSDT", "1h", 40)
+        assert len(closed) == 39 and closed[-1][0] == bars[-2][0]
+        markets.set_clock(lambda: bars[-1][0] + 3600)
+        assert len(markets.closed_candles("fake:BTCUSDT", "1h", 40)) == 40
+    finally:
+        markets.set_clock(None)

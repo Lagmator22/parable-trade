@@ -232,3 +232,36 @@ def test_private_data_symbols_never_reach_money_deciding_runs(manager):
     execute("UPDATE listings SET symbol = 'upload:d_ab12cd34ef' WHERE id = ?", (listing["id"],))
     assert listings.ensure_tracks() == 0
     assert rows("SELECT id FROM runs") == []
+
+
+def test_paused_listing_is_hidden_from_everyone_but_its_owner(seller_client, buyer_client, manager):
+    fake_provider()
+    seller = flow_seller()
+    listing = make_listing(seller)
+    path = f"/api/listings/{listing['id']}"
+    assert buyer_client.get(path).status_code == 200
+    assert seller_client.post(f"{path}/pause").json()["active"] is False
+    for method, url in (("get", path), ("get", f"{path}/diligence"), ("post", f"{path}/rerun"),
+                        ("post", f"{path}/test-drive")):
+        response = getattr(buyer_client, method)(url)
+        assert response.status_code == 404 and response.json()["code"] == "not_found"
+    assert seller_client.get(path).status_code == 200
+    assert seller_client.get(f"{path}/diligence").status_code == 200
+    assert seller_client.post(f"{path}/resume").json()["active"] is True
+    assert buyer_client.get(path).status_code == 200
+
+
+def test_every_early_track_death_counts_except_a_pause(manager):
+    seller = make_seller()
+    listing = make_listing(seller)
+    referee.stop(listing["track_run_id"], "stopped")
+    assert listings.ensure_tracks() == 1
+    track = market.listing_summary(listing["id"])["track"]
+    assert track["runs_total"] == 2 and track["runs_ended_early"] == 1
+    market.pause_listing(seller["id"], listing["id"])
+    market.resume_listing(seller["id"], listing["id"])
+    track = market.listing_summary(listing["id"])["track"]
+    assert track["runs_total"] == 3 and track["runs_ended_early"] == 1
+    assert referee.seller_record(seller["id"])["track_ended_early"] == 1
+    execute("UPDATE runs SET status = 'dead', cause = NULL, final_equity_usd = start_cash_usd WHERE id = ?", (track["run_id"],))
+    assert market.listing_summary(listing["id"])["track"]["runs_ended_early"] == 2

@@ -4,7 +4,7 @@ import { mount } from '../test/mount';
 import { failure, flush, stubFetch, type Call } from '../test/net';
 import { UploadBox } from './UploadBox';
 
-const dataset = { id: 'd_ab12cd34ef', symbol: 'upload:d_ab12cd34ef', name: 'prices', interval: '1d', quote: 'USD', bars: 50, start: 1, end: 2, data_hash: 'h', created_at: 3 };
+const dataset = { id: 'd_ab12cd34ef', symbol: 'upload:d_ab12cd34ef', name: 'prices', interval: '1d', quote: 'USD', bar_count: 50, start: 1, end: 2, data_hash: 'h', created_at: 3 };
 let calls: Call[] = [];
 let reply: (path: string) => unknown = () => ({ status: 'ready', dataset });
 
@@ -61,5 +61,13 @@ test('signed out uploads ask to sign in and other errors are shown', async () =>
   reply = () => { throw failure(413, 'File too large', 'too_large'); };
   await pick(view.host);
   expect(view.host.querySelector('[role=alert]')?.textContent).toBe('File too large');
+  await view.unmount();
+});
+
+test('warnings from a ready upload are shown', async () => {
+  reply = () => ({ status: 'ready', dataset, warnings: ['Dropped 3 rows with a bad date.'] });
+  const view = await mount(<UploadBox onReady={vi.fn()}/>);
+  await pick(view.host);
+  expect(view.host.textContent).toContain('Dropped 3 rows with a bad date.');
   await view.unmount();
 });

@@ -113,7 +113,7 @@ def pause_listing(owner_id: str, listing_id: str) -> dict:
             ledger.append("listing.paused", f"listing:{listing_id}", {"seller_id": owner_id})
         track = alive_track(listing_id)
         if track:
-            runs.get_manager().stop(track["id"])
+            runs.get_manager().stop(track["id"], "paused")
     return listing_row(listing_id)
 
 

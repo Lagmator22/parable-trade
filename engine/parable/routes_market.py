@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 from parable import analyst, diligence, ledger, market, proofs, shopper
 from parable.api_support import require_seller
 from parable.config import get_settings, paypal_mode
+from parable.errors import LabError
+from parable.identity import current_seller
 from parable.lab import quota
 from parable.lab.consts import (ASSET_KINDS, INTERVALS, MAX_BARS, MAX_FORMULA_LEN, MAX_GRID, MAX_PARAMS,
                                 MAX_SPEC_BYTES, MAX_STEPS_CHARS, MIN_BARS)
@@ -76,8 +78,18 @@ def listings(kind: str | None = None, mode: str | None = None, sort: str = "new"
     return market.list_listings(kind, mode, sort)
 
 
+def visible_listing(listing_id: str, request: Request) -> None:
+    summary = market.listing_summary(listing_id)
+    if summary["active"]:
+        return
+    viewer = current_seller(request)
+    if viewer is None or viewer["id"] != summary["seller"]["id"]:
+        raise LabError(404, "not_found", "listing not found")
+
+
 @router.get("/api/listings/{listing_id}")
-def listing(listing_id: str):
+def listing(listing_id: str, request: Request):
+    visible_listing(listing_id, request)
     return market.listing_detail(listing_id)
 
 
@@ -119,8 +131,8 @@ def test_drive(listing_id: str, request: Request, response: Response, body: Test
 
 
 @router.get("/api/listings/{listing_id}/diligence")
-def listing_diligence(listing_id: str):
-    market.listing_summary(listing_id)
+def listing_diligence(listing_id: str, request: Request):
+    visible_listing(listing_id, request)
     return diligence.report(listing_id)
 
 

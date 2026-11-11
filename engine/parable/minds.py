@@ -44,14 +44,17 @@ def probe_claude() -> None:
 def extract_json(text: str, required_key: str | None = None) -> dict:
     text = re.sub(r"<(thought|thinking)>.*?</\1>", "", text, flags=re.DOTALL)
     text = text.replace("```json", "").replace("```", "")
-    found, decoder = None, json.JSONDecoder()
-    for index, char in enumerate(text):
-        if char != "{":
-            continue
+    found, decoder, index = None, json.JSONDecoder(), 0
+    while True:
+        index = text.find("{", index)
+        if index < 0:
+            break
         try:
-            candidate, _ = decoder.raw_decode(text[index:])
+            candidate, end = decoder.raw_decode(text[index:])
         except ValueError:
+            index += 1
             continue
+        index += end
         if isinstance(candidate, dict) and (required_key is None or required_key in candidate):
             found = candidate
     if found is None:

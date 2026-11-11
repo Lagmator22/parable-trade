@@ -35,5 +35,5 @@ def seller_record(seller_id: str) -> dict:
         "probation_passed": len(passed),
         "probation_failed": len(probations) - len(passed),
         "track_runs": len(tracks),
-        "track_ended_early": sum(r["status"] == "dead" and r["cause"] != "expired" for r in tracks),
+        "track_ended_early": sum(r["status"] == "dead" and r["cause"] not in ("expired", "paused") for r in tracks),
     }

@@ -157,3 +157,16 @@ def test_proof_checks_are_rate_limited(fake_market, monkeypatch):
         proofs.rerun_listing(listing, "v_visitor0000000a")
     assert err.value.status == 429
     proofs.rerun_listing(listing, "v_visitor0000000b")
+
+
+def test_rerun_and_test_drive_refuse_paused_listings(fake_market):
+    ada = make_account("Ada")
+    _, _, _, listing = headline(ada, fake_market)
+    db.execute("UPDATE listings SET active = 0 WHERE id = ?", (listing,))
+    for call in (lambda: proofs.rerun_listing(listing, "v_visitor0000000b"),
+                 lambda: proofs.test_drive(listing, "v_visitor0000000b")):
+        with pytest.raises(LabError) as err:
+            call()
+        assert err.value.status == 404 and err.value.code == "not_found"
+    db.execute("UPDATE listings SET active = 1 WHERE id = ?", (listing,))
+    assert proofs.rerun_listing(listing, "v_visitor0000000b")["match"] is True

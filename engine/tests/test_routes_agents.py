@@ -218,3 +218,8 @@ def test_benchmark_on_foreign_dataset_is_refused(fake_market, pair):
 def test_public_run_views_stay_clean_for_legacy_rows(pair):
     anon = pair[4]
     assert anon.get("/api/runs").json() == []
+
+
+def test_stop_run_without_sign_in_has_a_code(client):
+    response = client.post("/api/runs/1/stop")
+    assert response.status_code == 401 and response.json()["code"] == "unauthorized"

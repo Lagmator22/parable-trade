@@ -107,7 +107,7 @@ def rate_check(requester_id: str) -> None:
 
 def listing_row(listing_id: str) -> dict:
     row = db.one("SELECT * FROM listings WHERE id = ?", (listing_id,))
-    if row is None:
+    if row is None or not row["active"]:
         raise LabError(404, "not_found", "no such listing")
     return row
 
@@ -131,7 +131,7 @@ def rerun_listing(listing_id: str, requester_id: str, refetch: bool = False) -> 
     match_data: bool | None = None
     if fetched:
         step = INTERVAL_SECONDS[claim_row["interval"]]
-        fresh = markets.candles(claim_row["symbol"], claim_row["interval"], claim_row["bars"],
+        fresh = markets.closed_candles(claim_row["symbol"], claim_row["interval"], claim_row["bars"],
                                 claim_row["start_t"], claim_row["end_t"] + step)
         match_data = data_hash(fresh) == claim_row["data_hash"]
         bars = fresh
@@ -162,7 +162,7 @@ def test_drive(listing_id: str, requester_id: str, symbol: str | None = None, in
         raise LabError(403, "forbidden", "uploaded data cannot be used for test drives")
     if interval not in INTERVALS:
         raise LabError(400, "bad_request", f"interval must be one of {', '.join(INTERVALS)}")
-    bars = markets.candles(symbol, interval, 2000, start, end)
+    bars = markets.closed_candles(symbol, interval, 2000, start, end)
     if len(bars) < MIN_BARS:
         raise LabError(400, "bad_request", f"only {len(bars)} bars are available, need at least {MIN_BARS}")
     result = run_backtest(spec.model_copy(update={"symbol": symbol, "interval": interval}), bars, symbol=symbol,

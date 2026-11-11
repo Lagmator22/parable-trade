@@ -4,6 +4,7 @@ type Cell = { key: string; label: string; value: string; tone?: 'up' | 'down' };
 
 const pct = (v: number | null, digits = 1) => (v === null || !Number.isFinite(v) ? '-' : `${v > 0 ? '+' : ''}${v.toFixed(digits)}%`);
 const num = (v: number | null, digits = 2) => (v === null || !Number.isFinite(v) ? '-' : v.toFixed(digits));
+const ratio = (v: number | null) => (v === null || !Number.isFinite(v) ? '-' : Math.abs(v) > 99 ? (v > 0 ? '>99' : '<-99') : v.toFixed(2));
 const tone = (v: number | null): 'up' | 'down' | undefined => (v === null || v === 0 ? undefined : v > 0 ? 'up' : 'down');
 
 function hold(seconds: number) {
@@ -19,11 +20,11 @@ export function metricCells(m: Metrics, quote: string): Cell[] {
     { key: 'benchmark_return_pct', label: 'Buy and hold', value: pct(m.benchmark_return_pct), tone: tone(m.benchmark_return_pct) },
     { key: 'excess_return_pct', label: 'Beat hold by', value: pct(m.excess_return_pct), tone: tone(m.excess_return_pct) },
     { key: 'max_drawdown_pct', label: 'Worst drop', value: `-${num(m.max_drawdown_pct, 1)}%`, tone: m.max_drawdown_pct > 0 ? 'down' : undefined },
-    { key: 'sharpe', label: 'Sharpe', value: num(m.sharpe) },
+    { key: 'sharpe', label: 'Sharpe', value: ratio(m.sharpe) },
     { key: 'trades', label: 'Trades', value: String(m.trades) },
     { key: 'win_rate_pct', label: 'Win rate', value: `${num(m.win_rate_pct, 0)}%` },
     { key: 'cagr_pct', label: 'Per year', value: pct(m.cagr_pct), tone: tone(m.cagr_pct) },
-    { key: 'sortino', label: 'Sortino', value: num(m.sortino) },
+    { key: 'sortino', label: 'Sortino', value: ratio(m.sortino) },
     { key: 'volatility_pct', label: 'Volatility', value: `${num(m.volatility_pct, 1)}%` },
     { key: 'profit_factor', label: 'Profit factor', value: num(m.profit_factor) },
     { key: 'exposure_pct', label: 'In market', value: `${num(m.exposure_pct, 0)}%` },

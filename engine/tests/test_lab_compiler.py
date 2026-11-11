@@ -233,3 +233,9 @@ def test_wide_range_without_step_is_repaired():
     assert tidy.params["fast"].step == 1 and tidy.params["slow"].step == 2
     with pytest.raises(compiler.SpecError):
         compiler.to_spec({**GOOD, "params": {"fast": {"value": 99, "min": 2, "max": 50}}}, "fake:X", "1h", "x:y")
+
+
+def test_nested_spec_object_is_unwrapped(script):
+    script({"strategy": {k: v for k, v in GOOD.items() if k not in ("built_by", "symbol", "interval")}})
+    result = compiler.compile_steps("buy dips", "binance:BTCUSDT", "1h", PLATFORM)
+    assert result.spec.entry.startswith("cross_above") and result.attempts == 1

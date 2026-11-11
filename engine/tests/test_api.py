@@ -79,3 +79,7 @@ def test_boot_restarts_missing_tracks_and_finishes_instant_sales(seller_client, 
         assert rebooted.get(f"/api/purchases/{started['purchase_id']}").json()["status"] == "paid_out"
         track = rebooted.get(f"/api/listings/{listing['id']}").json()["track"]
         assert track["status"] == "alive" and track["runs_total"] == 2
+
+
+def test_favicon_request_is_quiet(client):
+    assert client.get("/favicon.ico").status_code == 204

@@ -1,5 +1,5 @@
 export type PaypalMode = 'sandbox' | 'live' | 'mock';
-export type RunCause = 'expired' | 'loss_limit' | 'stopped';
+export type RunCause = 'expired' | 'loss_limit' | 'stopped' | 'paused';
 export type RunPurpose = 'practice' | 'probation' | 'track';
 export type RiskLevel = 'low' | 'medium' | 'high';
 export type SaleMode = 'hold' | 'instant';
@@ -25,9 +25,9 @@ export type Quote = { symbol: string; price: number; t: number; quote: string; s
 export type Candles = { symbol: string; interval: string; quote: string; source_kind: SourceKind; bars: Bar[]; data_hash: string };
 export type DataInfo = { symbol: string; interval: string; start: number; end: number; bars: number; data_hash: string; source_kind: SourceKind; quote: string };
 export type DataRequest = { symbol?: string; interval?: string; dataset_id?: string; start?: number; end?: number; limit?: number };
-export type Dataset = { id: string; symbol: string; name: string; interval: string; quote: string; bars: number; start: number; end: number; data_hash: string; created_at: number };
+export type Dataset = { id: string; symbol: string; name: string; interval: string; quote: string; bar_count: number; start: number; end: number; data_hash: string; created_at: number };
 export type UploadResult =
-  | { status: 'ready'; dataset: Dataset }
+  | { status: 'ready'; dataset: Dataset; warnings: string[] }
   | { status: 'needs_mapping'; draft_id: string; columns: string[]; preview: string[][]; suggestion: Record<string, string> | null };
 
 export type Metrics = {
@@ -59,7 +59,7 @@ export type CompileRequest = { steps?: string; symbol: string; interval: string;
 export type CompileResponse = { spec: StrategySpec; summary: string; rules: RuleChip[]; built_by: string; attempts: number; free_tries: FreeTries };
 export type Template = { id: string; label: string; blurb: string; family: string };
 export type Validation = { ok: boolean; errors: string[]; spec_hash: string; rules: RuleChip[] };
-export type AgentSummary = { id: string; name: string; symbol: string; interval: string; status: 'draft' | 'listed'; latest_version_id: string | null; listing_id: string | null; updated_at: number; headline: Partial<Metrics> | null };
+export type AgentSummary = { id: string; name: string; symbol: string; interval: string; status: 'draft' | 'listed'; latest_version_id: string | null; listing_id?: string | null; updated_at: number; headline?: Partial<Metrics> | null; version_count?: number };
 export type VersionSummary = { id: string; n: number; name: string; spec_hash: string; built_by: string; created_at: number };
 export type Version = VersionSummary & { agent_id: string; summary: string; steps_text: string; spec: StrategySpec };
 export type Agent = AgentSummary & { versions: VersionSummary[] };
@@ -111,7 +111,7 @@ export type PurchaseView = {
   payout_cents: number; paypal_order_id: string; paypal_authorization_id: string; paypal_capture_id: string;
   paypal_payout_batch_id: string; payout_status: string; threshold: { min_return_bps: number; max_loss_bps: number };
   run: Run | null; verdict: Verdict | null; timeline: LedgerEntry[]; error: string; created_at: number; updated_at: number;
-  license: License | null;
+  license: License | null; approve_url?: string;
 };
 export type PurchaseSummary = { id: string; status: PurchaseStatus; mode: SaleMode; listing_id: string; title: string; amount_cents: number; created_at: number };
 export type BoughtAgent = { purchase_id: string; listing_id: string; title: string; mode: SaleMode; status: PurchaseStatus; spec_hash: string; symbol: string; interval: string; entitled: boolean };
@@ -131,8 +131,8 @@ export type Stats = {
 };
 
 export type Diligence = { risk: RiskLevel; headline: string; findings: string[]; red_flags: string[]; facts: Record<string, unknown>; by: string };
-export type Recommendation = { listing_id: string | null; reason: string; alternatives: string[]; by: string };
-export type NewPurchase = { purchase_id: string; paypal_order_id: string; approve_url: string };
+export type Recommendation = { listing_id: string | null; reason: string; alternatives: string[]; by: string; listing?: PublicListing | null; alternative_listings?: PublicListing[] };
+export type NewPurchase = { purchase_id: string; status: PurchaseStatus; mode: SaleMode; paypal_order_id: string; approve_url: string };
 export type VerifyResult = { ok: boolean; checked: number; first_bad_seq: number | null; head: string };
 export type TamperResult = { edited_seq: number; before: unknown; after: unknown; verify: VerifyResult };
 export type Webhook = { event_type: string; verified: boolean | number; resource_id: string; received_at: number };

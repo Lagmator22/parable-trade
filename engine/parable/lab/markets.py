@@ -243,6 +243,13 @@ def candles(symbol: str, interval: str, limit: int = 500, start: float | None = 
     return [list(b) for b in bars]
 
 
+def closed_candles(symbol: str, interval: str, limit: int = 500, start: float | None = None,
+                   end: float | None = None) -> list[Bar]:
+    seconds = INTERVAL_SECONDS[interval] if interval in INTERVAL_SECONDS else 0
+    cutoff = now()
+    return [bar for bar in candles(symbol, interval, limit, start, end) if bar[0] + seconds <= cutoff]
+
+
 def latest(symbol: str, cached_only: bool = False) -> Quote | None:
     provider, code = split_symbol(symbol)
     ttl = 5 if provider.id == "binance" else 60

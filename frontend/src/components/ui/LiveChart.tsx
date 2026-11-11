@@ -17,7 +17,7 @@ export type LiveChartProps = {
 };
 
 type Palette = Record<'ink' | 'orange' | 'blue' | 'green' | 'grey' | 'paper' | 'card' | 'rule', string>;
-type Entry = { api: ISeriesApi<'Line'> | ISeriesApi<'Area'> | ISeriesApi<'Candlestick'>; kind: SeriesSpec['kind']; scale: string; base: number | null; last: number };
+type Entry = { api: ISeriesApi<'Line'> | ISeriesApi<'Area'> | ISeriesApi<'Candlestick'>; kind: SeriesSpec['kind']; scale: string; base: number | null; last: number; src?: unknown; pct?: boolean };
 
 const NAMES = ['ink', 'orange', 'blue', 'green', 'grey', 'paper', 'card', 'rule'] as const;
 const FALLBACK: Palette = { ink: '#0b0b0b', orange: '#ff4f00', blue: '#2547d0', green: '#17784a', grey: '#5c5c5c', paper: '#f5f5f4', card: '#ffffff', rule: '#d4d4d1' };
@@ -57,6 +57,17 @@ function snap(times: number[], t: number): number | null {
     if (times[mid] <= t) lo = mid; else hi = mid - 1;
   }
   return times[lo];
+}
+
+function spanOf(api: IChartApi | null): number {
+  const range = api?.timeScale().getVisibleRange();
+  return range ? Number(range.to) - Number(range.from) : Infinity;
+}
+
+export function tick(t: number, span: number): string {
+  const date = new Date(t * 1000);
+  if (span >= 2 * 86400) return date.toLocaleDateString();
+  return date.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', ...(span < 3600 ? { second: '2-digit' } : {}) });
 }
 
 const isPhone = () => typeof window.matchMedia === 'function' && window.matchMedia('(max-width: 640px)').matches;
@@ -122,6 +133,11 @@ export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(function Li
         }
         entries.current.set(spec.id, entry);
       }
+      if (spec.kind !== 'candles') entry.api.applyOptions({ color, lineStyle: spec.dashed ? LineStyle.Dashed : LineStyle.Solid } as never);
+      const fresh = entry.src !== spec.data || entry.pct !== pct;
+      entry.src = spec.data;
+      entry.pct = pct;
+      if (!fresh) return;
       if (spec.kind === 'candles') {
         const rows = cleanSeries(spec.data);
         (entry.api as ISeriesApi<'Candlestick'>).setData(rows.map(r => ({ time: r[0] as UTCTimestamp, open: r[1], high: r[2], low: r[3], close: r[4] })));
@@ -130,7 +146,6 @@ export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(function Li
         const { base, data } = lineData(spec.data, pct);
         entry.base = base;
         entry.last = data.length ? (data[data.length - 1].time as number) : 0;
-        entry.api.applyOptions({ color, lineStyle: spec.dashed ? LineStyle.Dashed : LineStyle.Solid } as never);
         (entry.api as ISeriesApi<'Line'>).setData(data);
       }
     });
@@ -167,7 +182,7 @@ export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(function Li
       const time = snap(cleanSeries(spec.data as number[][]).map(r => r[0]), mark.t);
       if (time === null) continue;
       const buy = mark.side === 'buy';
-      groups.get(id)!.push({ time: time as UTCTimestamp, position: buy ? 'belowBar' : 'aboveBar', shape: buy ? 'arrowUp' : 'arrowDown', color: buy ? palette.current.green : palette.current.orange, text: mark.text ?? (buy ? 'Buy' : 'Sell') });
+      groups.get(id)!.push({ time: time as UTCTimestamp, position: buy ? 'belowBar' : 'aboveBar', shape: buy ? 'arrowUp' : 'arrowDown', color: buy ? palette.current.green : palette.current.orange, text: marks.length > 12 ? '' : mark.text ?? (buy ? 'Buy' : 'Sell') });
     }
     for (const [id, list] of groups) {
       const entry = entries.current.get(id);
@@ -221,7 +236,7 @@ export const LiveChart = forwardRef<LiveChartHandle, LiveChartProps>(function Li
         priceFormatter: (v: number) => (latest.current.percent ? `${v.toFixed(1)}%` : latest.current.yFormat ? latest.current.yFormat(v) : v.toLocaleString(undefined, { maximumFractionDigits: 6 })),
         timeFormatter: (t: number) => (latest.current.xFormat ? latest.current.xFormat(t) : new Date(t * 1000).toLocaleString([], { hour12: false })),
       },
-      timeScale: { timeVisible: true, secondsVisible: false, tickMarkFormatter: (t: number) => (latest.current.xFormat ? latest.current.xFormat(t) : new Date(t * 1000).toLocaleDateString()) },
+      timeScale: { timeVisible: true, secondsVisible: false, tickMarkFormatter: (t: number) => (latest.current.xFormat ? latest.current.xFormat(t) : tick(t, spanOf(chart.current))) },
     });
     chart.current = api;
     entries.current.clear();

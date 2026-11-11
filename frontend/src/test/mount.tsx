@@ -10,6 +10,7 @@ export async function mount(node: ReactNode) {
   await act(async () => root.render(node));
   return {
     host,
+    rerender: (next: ReactNode) => act(async () => root.render(next)),
     click: (element: Element | null) => act(async () => (element as HTMLElement).click()),
     unmount: async () => {
       await act(async () => root.unmount());

@@ -88,6 +88,11 @@ class MockPayPal:
             self._order_by_request[custom_id] = order_id
             return self._order_summary(self._orders[order_id])
 
+    def order_approve_url(self, order_id) -> str:
+        with self._lock:
+            order = self._orders.get(order_id)
+            return self._order_summary(order)["approve_url"] if order else ""
+
     def _order_summary(self, order: dict) -> dict:
         url = f"{self.public_base_url}/paypal/mock-approve?order={order['id']}"
         return {"id": order["id"], "status": order["status"], "approve_url": url}

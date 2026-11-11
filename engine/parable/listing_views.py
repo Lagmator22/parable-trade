@@ -66,7 +66,8 @@ def track_view(listing: dict) -> dict | None:
         "seconds": current["lifetime_s"], "equity_pct": round((current["equity_usd"] / start - 1) * 100, 4),
         "start_equity": start / MICRO, "equity": current["equity_usd"] / MICRO,
         "price": price / PRICE_SCALE if price else None, "points": count, "runs_total": len(all_runs),
-        "runs_ended_early": sum(run["cause"] == "loss_limit" for run in all_runs), "quote": current["quote"],
+        "runs_ended_early": sum(run["status"] == "dead" and run["cause"] not in ("expired", "paused")
+                                for run in all_runs), "quote": current["quote"],
     }
 
 
