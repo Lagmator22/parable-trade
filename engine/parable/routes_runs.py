@@ -6,6 +6,7 @@ from parable.db import one, rows
 from parable.errors import MarketError
 from parable.identity import current_seller
 from parable.run_views import run_visible
+from parable.ledger_view import public_entries, redact_entries
 from parable.listings import listing_summary
 
 router = APIRouter()
@@ -41,7 +42,8 @@ def get_run(run_id: int, request: Request):
     viewer = viewer_id(request)
     found = visible_run(run_id, viewer)
     run = public_run(found, viewer)
-    return {**run, "entries": ledger.entries(subject=f"run:{run_id}", limit=RUN_ENTRY_LIMIT)}
+    found = ledger.entries(subject=f"run:{run_id}", limit=RUN_ENTRY_LIMIT)
+    return {**run, "entries": redact_entries(found, viewer)}
 
 
 @router.get("/api/runs/{run_id}/points")
@@ -78,9 +80,9 @@ def seller_profile(seller_id: str, request: Request):
 
 
 @router.get("/api/ledger")
-def ledger_entries(subject: str | None = None, kind: str | None = None, limit: int = 100,
+def ledger_entries(request: Request, subject: str | None = None, kind: str | None = None, limit: int = 100,
                    before: int | None = None):
-    return ledger.entries(subject=subject, kind=kind, limit=max(1, min(limit, LEDGER_MAX)), before_seq=before)
+    return public_entries(viewer_id(request), subject, kind, max(1, min(limit, LEDGER_MAX)), before)
 
 
 @router.get("/api/ledger/verify")

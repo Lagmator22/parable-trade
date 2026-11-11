@@ -143,7 +143,8 @@ def test_run_points_and_ledger_routes(fake_market, pair):
     agent = new_agent(ada)
     version = new_version(ada, agent)
     run = owner.post(f"/api/agents/{agent['id']}/versions/{version['id']}/run", json={}).json()
-    entries = anon.get("/api/ledger", params={"subject": f"run:{run['id']}"}).json()
+    assert anon.get("/api/ledger", params={"subject": f"run:{run['id']}"}).json() == []
+    entries = owner.get("/api/ledger", params={"subject": f"run:{run['id']}"}).json()
     assert entries and version["spec"]["entry"] not in json.dumps(entries)
     assert anon.get("/api/ledger/verify").json()["ok"] is True
 

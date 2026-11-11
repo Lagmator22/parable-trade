@@ -41,14 +41,27 @@ def test_old_plain_backtests_are_pruned_but_headlines_survive(manager, monkeypat
     assert one("SELECT COUNT(*) AS n FROM bar_sets")["n"] <= 4
 
 
-def test_daily_cap_on_checks_per_listing(manager, monkeypatch):
+def test_daily_cap_on_checks_is_per_requester(manager, monkeypatch):
     monkeypatch.setattr(proofs, "MAX_CHECKS_PER_LISTING_PER_DAY", 2)
     listing = make_listing()
-    for number in range(2):
-        proofs.rerun_listing(listing["id"], make_seller(f"C{number}", f"c{number}@example.com")["id"])
+    greedy = make_seller("C0", "c0@example.com")["id"]
+    for _ in range(2):
+        proofs.rerun_listing(listing["id"], greedy)
     with pytest.raises(LabError) as capped:
-        proofs.rerun_listing(listing["id"], make_seller("C9", "c9@example.com")["id"])
+        proofs.rerun_listing(listing["id"], greedy)
     assert capped.value.status == 429
+
+
+def test_anonymous_and_seller_checks_never_block_a_buyer(manager, monkeypatch):
+    monkeypatch.setattr(proofs, "MAX_CHECKS_PER_LISTING_PER_DAY", 2)
+    listing = make_listing()
+    for requester in ("v_visitor0000000a", listing["seller_id"]):
+        for _ in range(2):
+            proofs.rerun_listing(listing["id"], requester)
+        with pytest.raises(LabError):
+            proofs.rerun_listing(listing["id"], requester)
+    buyer = make_seller("Buyer", "buyer@example.com")["id"]
+    assert proofs.rerun_listing(listing["id"], buyer)["match"] is True
 
 
 def test_listings_per_account_are_capped(manager, monkeypatch):

@@ -123,10 +123,11 @@ def rate_check(requester_id: str, listing_id: str | None = None) -> None:
     quota.hit_with_address(f"proofs:{requester_id}", get_settings().rate_proofs_per_hour, 3600)
     if listing_id is None:
         return
-    today = db.one("SELECT COUNT(*) AS n FROM proofs WHERE listing_id = ? AND kind IN ('rerun', 'testdrive')"
-                   " AND created_at > ?", (listing_id, int(time.time()) - 86_400))
+    today = db.one("SELECT COUNT(*) AS n FROM proofs WHERE listing_id = ? AND requester_id = ?"
+                   " AND kind IN ('rerun', 'testdrive') AND created_at > ?",
+                   (listing_id, requester_id, int(time.time()) - 86_400))
     if today["n"] >= MAX_CHECKS_PER_LISTING_PER_DAY:
-        raise LabError(429, "rate_limited", "this agent was checked a lot today, try again tomorrow")
+        raise LabError(429, "rate_limited", "you checked this agent a lot today, try again tomorrow")
 
 
 def listing_row(listing_id: str) -> dict:
