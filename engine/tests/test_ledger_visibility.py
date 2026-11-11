@@ -77,3 +77,12 @@ def test_run_endpoint_redacts_entries_for_strangers(client, manager):
         assert "name" not in entry["data"] and "rules" not in entry["data"]
     track = client.get(f"/api/runs/{listing['track_run_id']}").json()
     assert track["entries"] and "redacted" not in track["entries"][-1]
+
+
+def test_webhook_entries_hide_paypal_and_purchase_ids(client, manager):
+    ledger.append("webhook.received", "webhook:EVT-1", {"resource_id": "RES-9", "purchase_id": "p_1",
+                                                          "buyer_email": "x@example.com", "event": "PAYMENT.CAPTURE.COMPLETED"})
+    found = client.get("/api/ledger?kind=webhook.received").json()
+    assert found and found[-1]["redacted"] is True
+    assert set(found[-1]["data"]) == {"event"}
+    assert client.get("/api/ledger/verify").json()["ok"] is True

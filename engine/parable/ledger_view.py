@@ -30,7 +30,7 @@ def shown_entry(entry: dict, viewer: str | None, cache: dict) -> dict | None:
         return without(entry, HIDDEN_RUN_DATA)
     if kind == "purchase":
         return without(entry, HIDDEN_MONEY_DATA, "purchase")
-    if entry["kind"].startswith(("payment.", "payout.")):
+    if any(key in entry["data"] for key in HIDDEN_MONEY_DATA):
         return without(entry, HIDDEN_MONEY_DATA)
     return entry
 

@@ -54,6 +54,7 @@ def test_daily_cap_on_checks_is_per_requester(manager, monkeypatch):
 
 def test_anonymous_and_seller_checks_never_block_a_buyer(manager, monkeypatch):
     monkeypatch.setattr(proofs, "MAX_CHECKS_PER_LISTING_PER_DAY", 2)
+    monkeypatch.setattr(proofs, "MAX_ANONYMOUS_CHECKS_PER_LISTING_PER_DAY", 2)
     listing = make_listing()
     for requester in ("v_visitor0000000a", listing["seller_id"]):
         for _ in range(2):
@@ -61,6 +62,27 @@ def test_anonymous_and_seller_checks_never_block_a_buyer(manager, monkeypatch):
         with pytest.raises(LabError):
             proofs.rerun_listing(listing["id"], requester)
     buyer = make_seller("Buyer", "buyer@example.com")["id"]
+    assert proofs.rerun_listing(listing["id"], buyer)["match"] is True
+
+
+def test_rotating_visitor_ids_hit_the_shared_anonymous_cap(manager, monkeypatch):
+    monkeypatch.setattr(proofs, "MAX_ANONYMOUS_CHECKS_PER_LISTING_PER_DAY", 3)
+    listing = make_listing()
+    for i in range(3):
+        proofs.rerun_listing(listing["id"], f"v_visitor{i:09d}")
+    with pytest.raises(LabError) as capped:
+        proofs.rerun_listing(listing["id"], "v_visitor999999999")
+    assert capped.value.status == 429
+
+
+def test_signed_in_buyer_passes_after_anonymous_cap_is_used_up(manager, monkeypatch):
+    monkeypatch.setattr(proofs, "MAX_ANONYMOUS_CHECKS_PER_LISTING_PER_DAY", 2)
+    listing = make_listing()
+    for i in range(2):
+        proofs.rerun_listing(listing["id"], f"v_visitor{i:09d}")
+    with pytest.raises(LabError):
+        proofs.rerun_listing(listing["id"], "v_visitor888888888")
+    buyer = make_seller("Buyer2", "buyer2@example.com")["id"]
     assert proofs.rerun_listing(listing["id"], buyer)["match"] is True
 
 

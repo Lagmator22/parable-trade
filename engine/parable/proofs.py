@@ -14,6 +14,7 @@ from parable.models import StrategySpec
 KINDS = ("backtest", "rerun", "testdrive", "benchmark")
 KEEP_BACKTESTS_PER_VERSION = 20
 MAX_CHECKS_PER_LISTING_PER_DAY = 200
+MAX_ANONYMOUS_CHECKS_PER_LISTING_PER_DAY = 200
 
 
 def keep_bars(bars: list, digest: str) -> None:
@@ -123,10 +124,16 @@ def rate_check(requester_id: str, listing_id: str | None = None) -> None:
     quota.hit_with_address(f"proofs:{requester_id}", get_settings().rate_proofs_per_hour, 3600)
     if listing_id is None:
         return
-    today = db.one("SELECT COUNT(*) AS n FROM proofs WHERE listing_id = ? AND requester_id = ?"
-                   " AND kind IN ('rerun', 'testdrive') AND created_at > ?",
-                   (listing_id, requester_id, int(time.time()) - 86_400))
-    if today["n"] >= MAX_CHECKS_PER_LISTING_PER_DAY:
+    since = int(time.time()) - 86_400
+    if requester_id.startswith("v_"):
+        today = db.one("SELECT COUNT(*) AS n FROM proofs WHERE listing_id = ? AND substr(requester_id, 1, 2) = 'v_'"
+                       " AND kind IN ('rerun', 'testdrive') AND created_at > ?", (listing_id, since))
+        cap = MAX_ANONYMOUS_CHECKS_PER_LISTING_PER_DAY
+    else:
+        today = db.one("SELECT COUNT(*) AS n FROM proofs WHERE listing_id = ? AND requester_id = ?"
+                       " AND kind IN ('rerun', 'testdrive') AND created_at > ?", (listing_id, requester_id, since))
+        cap = MAX_CHECKS_PER_LISTING_PER_DAY
+    if today["n"] >= cap:
         raise LabError(429, "rate_limited", "you checked this agent a lot today, try again tomorrow")
 
 
