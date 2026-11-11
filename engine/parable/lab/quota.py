@@ -17,6 +17,7 @@ COOKIE = "parable_vid"
 COOKIE_SALT = "vid"
 COOKIE_MAX_AGE = 365 * 24 * 3600
 MAX_KEYS = 10_000
+HARD_MAX_KEYS = 20_000
 IP_FREE_FACTOR = 2
 IP_RATE_FACTOR = 3
 LLM_GLOBAL_PER_MINUTE = 120
@@ -91,14 +92,39 @@ def take_free_try(visitor: str) -> None:
 class RateLimiter:
     def __init__(self) -> None:
         self.hits: dict[str, deque] = {}
+        self.rules: dict[str, tuple[int, int]] = {}
         self.lock = threading.Lock()
+
+    def live(self, key: str, now: float) -> int:
+        window = self.rules[key][1]
+        return sum(1 for t in self.hits[key] if t > now - window)
+
+    def drop(self, key: str) -> None:
+        self.hits.pop(key, None)
+        self.rules.pop(key, None)
+
+    def evict(self, now: float) -> None:
+        for key in [k for k, q in self.hits.items() if not q or q[-1] <= now - self.rules[k][1]]:
+            self.drop(key)
+        if len(self.hits) < MAX_KEYS:
+            return
+        loose = sorted((k for k in self.hits if self.live(k, now) < self.rules[k][0]), key=lambda k: self.hits[k][-1])
+        for key in loose:
+            if len(self.hits) < MAX_KEYS:
+                return
+            self.drop(key)
+        if len(self.hits) >= HARD_MAX_KEYS:
+            oldest = sorted(self.hits, key=lambda k: self.hits[k][-1])
+            for key in oldest[: len(self.hits) - HARD_MAX_KEYS + 1]:
+                self.drop(key)
 
     def hit(self, key: str, limit: int, window_s: int) -> None:
         now = clock()
         with self.lock:
-            if len(self.hits) > MAX_KEYS:
-                self.hits = {k: q for k, q in self.hits.items() if q and q[-1] > now - window_s}
+            if key not in self.hits and len(self.hits) >= MAX_KEYS:
+                self.evict(now)
             queue = self.hits.setdefault(key, deque())
+            self.rules[key] = (limit, window_s)
             while queue and queue[0] <= now - window_s:
                 queue.popleft()
             if len(queue) >= limit:
@@ -109,6 +135,7 @@ class RateLimiter:
     def clear(self) -> None:
         with self.lock:
             self.hits.clear()
+            self.rules.clear()
 
 
 limiter = RateLimiter()

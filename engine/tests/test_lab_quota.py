@@ -124,3 +124,47 @@ def test_rate_limiter_sliding_window(clock):
 
 def test_module_singleton_exists():
     assert isinstance(quota.limiter, RateLimiter)
+
+
+def test_short_window_flood_does_not_reset_daily_key_at_limit(clock, monkeypatch):
+    monkeypatch.setattr(quota, "MAX_KEYS", 20)
+    monkeypatch.setattr(quota, "HARD_MAX_KEYS", 40)
+    limiter = RateLimiter()
+    for _ in range(2):
+        limiter.hit("daily", 2, 86_400)
+    for i in range(100):
+        clock.t += 1
+        limiter.hit(f"flood:{i}", 5, 60)
+    with pytest.raises(LabError):
+        limiter.hit("daily", 2, 86_400)
+
+
+def test_hourly_key_keeps_count_after_short_window_eviction(clock, monkeypatch):
+    monkeypatch.setattr(quota, "MAX_KEYS", 10)
+    monkeypatch.setattr(quota, "HARD_MAX_KEYS", 30)
+    limiter = RateLimiter()
+    limiter.hit("hourly", 3, 3600)
+    limiter.hit("hourly", 3, 3600)
+    clock.t += 120
+    for i in range(15):
+        clock.t += 10
+        limiter.hit(f"short:{i}", 5, 60)
+    assert len(limiter.hits["hourly"]) == 2
+    limiter.hit("hourly", 3, 3600)
+    with pytest.raises(LabError):
+        limiter.hit("hourly", 3, 3600)
+
+
+def test_expired_keys_are_pruned_and_ceiling_holds(clock, monkeypatch):
+    monkeypatch.setattr(quota, "MAX_KEYS", 10)
+    monkeypatch.setattr(quota, "HARD_MAX_KEYS", 15)
+    limiter = RateLimiter()
+    for i in range(10):
+        limiter.hit(f"old:{i}", 1, 60)
+    clock.t += 61
+    limiter.hit("new", 1, 60)
+    assert list(limiter.hits) == ["new"]
+    for i in range(200):
+        limiter.hit(f"full:{i}", 1, 86_400)
+        assert len(limiter.hits) <= 15
+    assert set(limiter.hits) == set(limiter.rules)

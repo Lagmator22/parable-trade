@@ -172,3 +172,15 @@ def test_one_ip_cannot_drain_the_anonymous_pool(manager):
         assert proofs.rerun_listing(listing["id"], "v_visitor555555555")["match"] is True
     finally:
         guard.client_ip.reset(other)
+
+
+def test_rerun_of_missing_listing_creates_no_limiter_key(manager):
+    from parable.lab import quota
+
+    quota.limiter.clear()
+    with pytest.raises(LabError) as err:
+        proofs.rerun_listing("lst_doesnotexist", "v_" + "a" * 16)
+    assert err.value.status == 404
+    with pytest.raises(LabError):
+        proofs.test_drive("lst_doesnotexist", "v_" + "a" * 16)
+    assert quota.limiter.hits == {}

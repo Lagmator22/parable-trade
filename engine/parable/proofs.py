@@ -154,8 +154,8 @@ def diff_of(claim: dict, rerun: dict) -> dict:
 
 
 def rerun_listing(listing_id: str, requester_id: str, refetch: bool = False) -> dict:
-    rate_check(requester_id, listing_id)
     listing = listing_row(listing_id)
+    rate_check(requester_id, listing_id)
     claim_row = proof_row(listing["proof_id"]) if listing["proof_id"] else None
     if claim_row is None:
         raise LabError(404, "not_found", "this listing has no proof to re-run")
@@ -186,8 +186,8 @@ def rerun_listing(listing_id: str, requester_id: str, refetch: bool = False) -> 
 
 def test_drive(listing_id: str, requester_id: str, symbol: str | None = None, interval: str | None = None,
                start: float | None = None, end: float | None = None) -> dict:
-    rate_check(requester_id, listing_id)
     listing = listing_row(listing_id)
+    rate_check(requester_id, listing_id)
     if not listing["allow_test_drive"]:
         raise LabError(403, "test_drive_off", "the seller turned test drives off for this agent")
     claim_row = proof_row(listing["proof_id"]) if listing["proof_id"] else None
