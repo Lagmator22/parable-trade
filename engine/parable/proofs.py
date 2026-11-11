@@ -2,7 +2,7 @@ import json
 import secrets
 import time
 
-from parable import agents, db, ledger
+from parable import agents, db, guard, ledger
 from parable.config import get_settings
 from parable.errors import LabError
 from parable.lab import markets, quota
@@ -15,6 +15,7 @@ KINDS = ("backtest", "rerun", "testdrive", "benchmark")
 KEEP_BACKTESTS_PER_VERSION = 20
 MAX_CHECKS_PER_LISTING_PER_DAY = 200
 MAX_ANONYMOUS_CHECKS_PER_LISTING_PER_DAY = 200
+MAX_ANONYMOUS_CHECKS_PER_IP_PER_LISTING_PER_DAY = 20
 
 
 def keep_bars(bars: list, digest: str) -> None:
@@ -135,6 +136,9 @@ def rate_check(requester_id: str, listing_id: str | None = None) -> None:
         cap = MAX_CHECKS_PER_LISTING_PER_DAY
     if today["n"] >= cap:
         raise LabError(429, "rate_limited", "you checked this agent a lot today, try again tomorrow")
+    if requester_id.startswith("v_"):
+        source = quota.ip_visitor(guard.client_ip.get())
+        quota.limiter.hit(f"checks:{source}:{listing_id}", MAX_ANONYMOUS_CHECKS_PER_IP_PER_LISTING_PER_DAY, 86_400)
 
 
 def listing_row(listing_id: str) -> dict:

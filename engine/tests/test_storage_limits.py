@@ -5,7 +5,7 @@ import pytest
 
 from agents_support import make_account, make_client
 from market_support import make_listing, make_seller
-from parable import proofs
+from parable import guard, proofs
 from parable.db import execute, one, rows
 from parable.errors import LabError
 from parable.lab import tables
@@ -151,3 +151,24 @@ def test_uploads_are_rate_limited(client, monkeypatch):
     codes = {session.post("/api/datasets", files={"file": ("a.txt", b"nope")}).status_code
              for _ in range(UPLOADS_PER_HOUR + 2)}
     assert 429 in codes
+
+
+def test_one_ip_cannot_drain_the_anonymous_pool(manager):
+    listing = make_listing()
+    token = guard.client_ip.set("203.0.113.7")
+    try:
+        for i in range(20):
+            proofs.rerun_listing(listing["id"], f"v_visitor{i:09d}")
+        with pytest.raises(LabError) as capped:
+            proofs.rerun_listing(listing["id"], "v_visitor777777777")
+        assert capped.value.status == 429 and capped.value.code == "rate_limited"
+        assert "retry_after" in capped.value.extra
+        buyer = make_seller("Buyer3", "buyer3@example.com")["id"]
+        assert proofs.rerun_listing(listing["id"], buyer)["match"] is True
+    finally:
+        guard.client_ip.reset(token)
+    other = guard.client_ip.set("198.51.100.9")
+    try:
+        assert proofs.rerun_listing(listing["id"], "v_visitor555555555")["match"] is True
+    finally:
+        guard.client_ip.reset(other)
