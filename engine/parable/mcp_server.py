@@ -6,8 +6,8 @@ from mcp.server.fastmcp import FastMCP
 DEFAULT_URL = "http://localhost:8000"
 REQUEST_TIMEOUT_S = 60.0
 BUY_INSTRUCTION = (
-    "A human must open approve_url and approve the payment in PayPal. The money is only held, never charged, "
-    "until the bot survives its probation. Keep buyer_token private and use it with purchase_status."
+    "A human must open this link, sign in and pay with PayPal. Agents cannot buy on their own. In hold mode the "
+    "payment is only held until the agent passes its trial."
 )
 
 mcp = FastMCP("Parable")
@@ -31,30 +31,36 @@ def call(method: str, path: str, **options) -> dict | list:
 
 
 def brief(listing: dict) -> dict:
-    record = listing["seller_record"]
+    head, track = listing["headline"], listing["track"]
     return {
         "listing_id": listing["id"],
         "title": listing["title"],
         "seller": listing["seller"]["name"],
+        "asset": listing["symbol"],
+        "kind": listing["kind"],
+        "interval": listing["interval"],
+        "mode": listing["mode"],
         "price_dollars": listing["price_cents"] / 100,
-        "probation_minutes": listing["probation_s"] // 60,
-        "promised_min_return_percent": listing["min_return_bps"] / 100,
-        "loss_limit_percent": listing["rules"]["max_loss_bps"] / 100,
-        "strategy": listing["rules"]["strategy"],
-        "finished_runs": record["ended"],
-        "survived_runs": record["survived"],
-        "probations_passed": record["probation_passed"],
-        "probations_failed": record["probation_failed"],
+        "proof_return_percent": head["total_return_pct"],
+        "buy_and_hold_percent": head["benchmark_return_pct"],
+        "max_drawdown_percent": head["max_drawdown_pct"],
+        "trades": head["trades"],
+        "data": listing["data"]["source_kind"] if listing["data"] else None,
+        "reruns_matched": listing["reruns"]["matched"],
+        "reruns_total": listing["reruns"]["count"],
+        "live_track_percent": track["equity_pct"] if track else None,
+        "free_test_drive": listing["allow_test_drive"],
     }
 
 
 @mcp.tool()
-def find_bots(query: str, max_price_dollars: float | None = None) -> dict:
+def find_agents(query: str, kind: str | None = None, max_price_dollars: float | None = None) -> dict:
     budget = None if max_price_dollars is None else int(round(max_price_dollars * 100))
     shortlist = call("POST", "/api/shopper", json={"query": query, "budget_cents": budget})
     if "error" in shortlist:
         return shortlist
-    listings = call("GET", "/api/listings")
+    params = {"kind": kind} if kind else {}
+    listings = call("GET", "/api/listings", params=params)
     if isinstance(listings, dict):
         return listings
     candidates = [brief(item) for item in listings if budget is None or item["price_cents"] <= budget]
@@ -68,16 +74,42 @@ def due_diligence(listing_id: str) -> dict:
 
 
 @mcp.tool()
-def buy_bot(listing_id: str) -> dict:
-    created = call("POST", "/api/purchases", json={"listing_id": listing_id, "via": "agent"})
-    if "error" in created:
-        return created
-    return {**created, "instruction": BUY_INSTRUCTION}
+def proof(listing_id: str) -> dict:
+    detail = call("GET", f"/api/listings/{listing_id}")
+    if "error" in detail:
+        return detail
+    claim = detail["proof"]
+    return {"listing_id": listing_id, "data": claim["data"], "metrics": claim["metrics"],
+            "trades": claim["trades_count"], "engine_version": claim["engine_version"],
+            "result_hash": claim["result_hash"], "ledger_seq": claim["ledger_seq"]}
 
 
 @mcp.tool()
-def purchase_status(purchase_id: str, buyer_token: str) -> dict:
-    return call("GET", f"/api/purchases/{purchase_id}", headers={"x-buyer-token": buyer_token})
+def rerun_proof(listing_id: str) -> dict:
+    result = call("POST", f"/api/listings/{listing_id}/rerun", json={})
+    if "error" in result:
+        return result
+    return {"listing_id": listing_id, "match": result["match"], "claimed_hash": result["claim"]["result_hash"],
+            "rerun_hash": result["rerun"]["result_hash"], "diff": result["diff"]}
+
+
+@mcp.tool()
+def test_drive(listing_id: str, symbol: str | None = None) -> dict:
+    body = {"symbol": symbol} if symbol else {}
+    result = call("POST", f"/api/listings/{listing_id}/test-drive", json=body)
+    if "error" in result:
+        return result
+    return {"listing_id": listing_id, "data": result["proof"]["data"], "metrics": result["proof"]["metrics"],
+            "claim_metrics": result["claim"]["metrics"] if result["claim"] else None}
+
+
+@mcp.tool()
+def buy_link(listing_id: str) -> dict:
+    listing = call("GET", f"/api/listings/{listing_id}")
+    if "error" in listing:
+        return listing
+    base = os.environ.get("PARABLE_PUBLIC_URL") or os.environ.get("PARABLE_URL", DEFAULT_URL)
+    return {"url": f"{base.rstrip('/')}/#agent/{listing_id}", "instruction": BUY_INSTRUCTION}
 
 
 @mcp.tool()

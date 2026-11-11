@@ -7,8 +7,6 @@ export const cents = (value: number) => dollars.format(value / 100);
 
 export const usdMicro = (value: number) => dollars.format(value / 1_000_000);
 
-export const usdFloat = (value: number) => dollars.format(value);
-
 export const bps = (value: number) => `${(value / 100).toFixed(2)}%`;
 
 export const bpsShort = (value: number) => `${(value / 100).toFixed(1)}%`;
@@ -34,11 +32,6 @@ function mergeVersion(tokens: string[]): string[] {
     else merged.push(token);
     return merged;
   }, []);
-}
-
-export function strategyName(strategy: string): string {
-  const spaced = strategy.replace(/_/g, ' ');
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }
 
 export function duration(seconds: number): string {
@@ -87,6 +80,16 @@ export const shortHash = (hash: string, length = 10) => hash.slice(0, length);
 
 export const mask = (id: string | null | undefined) => (!id ? '' : id.length <= 8 ? id : `…${id.slice(-6)}`);
 
-export const survivalPercent = (survived: number, ended: number) => (ended > 0 ? Math.round((survived / ended) * 100) : null);
+export const pct = (value: number | null | undefined, digits = 1) =>
+  value === null || value === undefined || !Number.isFinite(value) ? '-' : `${value > 0 ? '+' : ''}${value.toFixed(digits)}%`;
 
-export const priceFromRaw = (raw: number) => raw / 1e8;
+export function builtBy(value: string | null | undefined): string {
+  if (!value) return 'Hand-made';
+  if (value.startsWith('template:')) return 'Template';
+  if (value === 'manual' || value === 'user') return 'Hand-made';
+  return brainName(value);
+}
+
+export const SOURCE_LABEL: Record<string, string> = { market: 'Real data', sample: 'Sample data', creator: 'Seller data' };
+
+export const instantOnly = (symbol: string) => symbol.startsWith('upload:') || symbol.startsWith('sample:');

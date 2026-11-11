@@ -79,7 +79,8 @@ def test_mask_email_hides_the_local_part():
 
 
 def test_me_is_anonymous_by_default(client):
-    assert client.get("/api/me").json() == {"seller": None, "paypal_mode": "mock"}
+    assert client.get("/api/me").json() == {"seller": None, "paypal_mode": "mock",
+                                           "free_tries": {"limit": 5, "used": 0, "remaining": 5}}
 
 
 def test_me_reports_real_mode_when_client_is_not_mock(client, monkeypatch):

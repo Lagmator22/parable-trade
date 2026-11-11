@@ -4,7 +4,7 @@ import type {
   Dataset, Diligence, Info, Job, LedgerEntry, ListingDetail, Me, Models, NewListingPayload, NewPurchase,
   PublicListing, PurchaseSummary, PurchaseView, Quote, Question, Recommendation, RerunResult, Run, RunPoints, SaleSummary,
   SellerProfile, Stats, StoredBacktest, StrategySpec, SymbolInfo, TamperResult, TestDriveResult, UploadResult, Validation,
-  VerifyResult, Version, Webhook, ListingPayload, Listing,
+  VerifyResult, Version, Webhook,
 } from './apiTypes';
 
 export * from './apiTypes';
@@ -83,6 +83,8 @@ export const fetchPopular = (kind: string) => get<SymbolInfo[]>(`/api/markets/po
 export const searchSymbols = (q: string, kind = 'all') => get<SymbolInfo[]>(`/api/markets/search${qs({ q, kind })}`);
 export const fetchCandles = (symbol: string, interval: string, limit = 500, start?: number, end?: number) =>
   get<Candles>(`/api/markets/candles${qs({ symbol, interval, limit, start, end })}`);
+export const fetchTemplate = (id: string, symbol: string, interval: string) =>
+  get<CompileResponse>(`/api/lab/templates/${encodeURIComponent(id)}${qs({ symbol, interval })}`);
 export const fetchQuote = (symbol: string) => get<Quote>(`/api/markets/latest${qs({ symbol })}`);
 
 export async function uploadDataset(file: File, name?: string, quote?: string): Promise<UploadResult> {
@@ -140,7 +142,7 @@ export const fetchProof = (id: string) => get<StoredBacktest>(`/api/proofs/${id}
 export const fetchListings = (query?: { kind?: string; mode?: string; sort?: string }) =>
   get<PublicListing[]>(`/api/listings${qs({ kind: query?.kind, mode: query?.mode, sort: query?.sort })}`);
 export const fetchListing = (id: string) => get<ListingDetail>(`/api/listings/${id}`);
-export const createListing = (payload: NewListingPayload | ListingPayload) => post<ListingDetail & Listing>('/api/listings', payload);
+export const createListing = (payload: NewListingPayload) => post<ListingDetail>('/api/listings', payload);
 export const pauseListing = (id: string) => post<ListingDetail>(`/api/listings/${id}/pause`);
 export const resumeListing = (id: string) => post<ListingDetail>(`/api/listings/${id}/resume`);
 export const attachBenchmark = (listing_id: string, benchmark_id: string) => post<ListingDetail>(`/api/listings/${listing_id}/benchmark`, { benchmark_id });
@@ -153,7 +155,7 @@ export const askShopper = (query: string, budget_cents?: number) => post<Recomme
 export const startPurchase = (listing_id: string) => post<NewPurchase>('/api/purchases', { listing_id });
 export const approvePurchase = (id: string, order_id: string) => post<PurchaseView>(`/api/purchases/${id}/approve`, { order_id });
 export const retryPurchase = (id: string) => post<PurchaseView>(`/api/purchases/${id}/retry`);
-export const fetchPurchase = (id: string, token?: string) => get<PurchaseView>(`/api/purchases/${id}`, token ? { 'x-buyer-token': token } : undefined);
+export const fetchPurchase = (id: string) => get<PurchaseView>(`/api/purchases/${id}`);
 export async function downloadLicense(id: string): Promise<Blob> {
   const response = await send(`/api/purchases/${id}/license`, { method: 'GET' });
   if (!response.ok) return read<Blob>(response);
@@ -167,7 +169,6 @@ export const fetchMyPurchases = () => get<PurchaseSummary[]>('/api/me/purchases'
 export const fetchMySales = () => get<SaleSummary[]>('/api/me/sales');
 export const fetchRunPoints = (run_id: number, since = 0) => get<RunPoints>(`/api/runs/${run_id}/points${qs({ since })}`);
 
-export const startPractice = (id: string) => post<Run>(`/api/listings/${id}/practice`);
 export const stopRun = (id: number) => post<Run>(`/api/runs/${id}/stop`);
 export const fetchSeller = (id: string) => get<SellerProfile>(`/api/sellers/${id}`);
 export const fetchRuns = (query: string) => get<Run[]>(`/api/runs?${query}`);
@@ -176,4 +177,3 @@ export const verifyLedger = () => get<VerifyResult>('/api/ledger/verify');
 export const tamperDemo = () => post<TamperResult>('/api/ledger/tamper-demo');
 export const fetchWebhooks = () => get<Webhook[]>('/api/webhooks/recent');
 export const logout = () => post<unknown>('/api/logout');
-export const fetchPrices = () => get<{ points: [number, number][] }>('/api/prices');

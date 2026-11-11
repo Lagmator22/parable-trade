@@ -10,7 +10,7 @@ export function OptimizePanel({ build }: { build: Build }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const { spec, data } = build;
-  const result = job?.result ?? null;
+  const result: Partial<OptimizeResult> | null = job?.result ?? null;
 
   async function run() {
     if (!spec || !data) return;
@@ -38,10 +38,10 @@ export function OptimizePanel({ build }: { build: Build }) {
     </div>
     {job && busy && <div className="lease"><span style={{ width: `${Math.round(job.progress * 100)}%` }}/></div>}
     {error && <p className="say bad" role="alert">{error}</p>}
-    {result && <div className="scroll-x"><table className="table leaderboard">
+    {result && Array.isArray(result.rows) && <div className="scroll-x"><table className="table leaderboard">
       <thead><tr><th>#</th><th>Settings</th><th>Train</th><th>Test</th><th>Drop</th><th></th></tr></thead>
       <tbody>
-        <tr className="base"><td>-</td><td>Current</td><td>{pct(result.base.train.total_return_pct)}</td><td>{pct(result.base.test.total_return_pct)}</td><td>-{result.base.test.max_drawdown_pct.toFixed(1)}%</td><td/></tr>
+        {result.base && <tr className="base"><td>-</td><td>Current</td><td>{pct(result.base.train.total_return_pct)}</td><td>{pct(result.base.test.total_return_pct)}</td><td>-{result.base.test.max_drawdown_pct.toFixed(1)}%</td><td/></tr>}
         {result.rows.map((r, i) => <tr key={i}>
           <td>{i + 1}</td>
           <td>{Object.entries(r.params).map(([k, v]) => `${k} ${v}`).join(', ')}{r.overfit && <span className="badge warn">overfit</span>}</td>
@@ -52,6 +52,6 @@ export function OptimizePanel({ build }: { build: Build }) {
         </tr>)}
       </tbody>
     </table>
-    <p className="chart-note mono">{result.evaluated}/{result.grid_size} tried. Train {result.train_bars} bars, test {result.test_bars} bars. Test is data the search never saw.</p></div>}
+    {result.grid_size !== undefined && <p className="chart-note mono">{result.evaluated ?? result.rows.length}/{result.grid_size} tried. Train {result.train_bars ?? '-'} bars, test {result.test_bars ?? '-'} bars. Test is data the search never saw.</p>}</div>}
   </div>;
 }

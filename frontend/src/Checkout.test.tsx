@@ -1,43 +1,80 @@
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import type { Me } from './api';
 import { Checkout } from './sections/Checkout';
-import { listing, mockInfo } from './test/fixtures';
+import { instantListing, listing, mockInfo } from './test/fixtures';
+import { failure, stubFetch } from './test/net';
 import { mount } from './test/mount';
-import { savedPurchases } from './storage';
+import { takeReturn } from './signIn';
 
-const created = { purchase_id: 'p_test', buyer_token: 'tok', paypal_order_id: 'MOCK-ORDER-1', approve_url: '/paypal/mock-approve?order=MOCK-ORDER-1' };
+const created = { purchase_id: 'p_test', paypal_order_id: 'MOCK-ORDER-1', approve_url: '/paypal/mock-approve?order=MOCK-ORDER-1' };
+const buyer: Me = { seller: { id: 's_buyer', name: 'Bo', verified: true, email_masked: 'b***' }, paypal_mode: 'mock' };
+const signedOut: Me = { seller: null, paypal_mode: 'mock' };
+const labels = (host: HTMLElement) => [...host.querySelectorAll('button')].map(button => button.textContent);
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => { sessionStorage.clear(); document.querySelectorAll('script[data-parable-paypal]').forEach(node => node.remove()); });
 afterEach(() => vi.unstubAllGlobals());
 
-test('mock mode shows the simulated PayPal button and no SDK', async () => {
-  const view = await mount(<Checkout listing={listing} info={mockInfo} onClose={() => {}}/>);
-  const labels = [...view.host.querySelectorAll('button')].map(button => button.textContent);
-  expect(labels).toContain('Pay with PayPal (simulated)');
-  expect(view.host.textContent).toContain('Charged now');
+test('hold mode in mock shows the simulated button, the hold and no SDK', async () => {
+  const view = await mount(<Checkout listing={listing} info={mockInfo} me={buyer} onClose={() => {}}/>);
+  expect(labels(view.host)).toContain('Pay with PayPal (simulated)');
+  const text = view.host.textContent ?? '';
+  expect(text).toContain('Charged now$0.00');
+  expect(text).toContain('Held in PayPal');
+  expect(text).toContain('Pay if proven');
   expect(document.querySelector('script[src*="paypal.com/sdk"]')).toBeNull();
   await view.unmount();
 });
 
-test('the simulated button creates the purchase and navigates to the approve url', async () => {
-  const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, text: async () => JSON.stringify(created) });
-  vi.stubGlobal('fetch', fetchMock);
+test('instant mode in mock charges now and creates the purchase then opens the approve url', async () => {
+  const calls = stubFetch(() => created);
   const navigate = vi.fn();
-  const view = await mount(<Checkout listing={listing} info={mockInfo} onClose={() => {}} navigate={navigate}/>);
-  const pay = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Pay with PayPal (simulated)');
-  await view.click(pay!);
-  expect(fetchMock).toHaveBeenCalledWith('/api/purchases', expect.objectContaining({ method: 'POST', body: JSON.stringify({ listing_id: listing.id }) }));
+  const view = await mount(<Checkout listing={instantListing} info={mockInfo} me={buyer} onClose={() => {}} navigate={navigate}/>);
+  const text = view.host.textContent ?? '';
+  expect(text).toContain('Charged now$25.00');
+  expect(text).not.toContain('Held in PayPal');
+  expect(text).toContain('Instant');
+  await view.click([...view.host.querySelectorAll('button')].find(b => b.textContent === 'Pay with PayPal (simulated)')!);
+  expect(calls[0]).toMatchObject({ method: 'POST', path: '/api/purchases', body: { listing_id: instantListing.id } });
   expect(navigate).toHaveBeenCalledWith(created.approve_url);
-  expect(savedPurchases()[0]).toMatchObject({ purchase_id: 'p_test', buyer_token: 'tok', listing_title: 'Momentum Mule' });
   await view.unmount();
 });
 
-test('shows the server error when the purchase cannot start', async () => {
-  const failure = { ok: false, status: 404, text: async () => JSON.stringify({ detail: 'listing is paused' }) };
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(failure));
+test('signed out visitors are sent to PayPal login and come back', async () => {
+  window.location.hash = '#agent/l_abc1234567';
   const navigate = vi.fn();
-  const view = await mount(<Checkout listing={listing} info={mockInfo} onClose={() => {}} navigate={navigate}/>);
-  const pay = [...view.host.querySelectorAll('button')].find(button => button.textContent === 'Pay with PayPal (simulated)');
-  await view.click(pay!);
+  const view = await mount(<Checkout listing={listing} info={mockInfo} me={signedOut} onClose={() => {}} navigate={navigate}/>);
+  expect(labels(view.host)).not.toContain('Pay with PayPal (simulated)');
+  await view.click([...view.host.querySelectorAll('button')].find(b => b.textContent === 'Sign in with PayPal')!);
+  expect(navigate).toHaveBeenCalledWith('/paypal/login');
+  expect(takeReturn()).toBe('#agent/l_abc1234567');
+  await view.unmount();
+});
+
+test('the seller cannot buy their own listing', async () => {
+  const owner: Me = { ...buyer, seller: { ...buyer.seller!, id: listing.seller.id } };
+  const view = await mount(<Checkout listing={listing} info={mockInfo} me={owner} onClose={() => {}}/>);
+  expect(labels(view.host)).not.toContain('Pay with PayPal (simulated)');
+  expect(view.host.querySelector('[role=alert]')?.textContent).toContain('your own');
+  await view.unmount();
+});
+
+test('real mode loads the SDK with authorize for hold and capture for instant', async () => {
+  const live = { ...mockInfo, paypal_mode: 'sandbox' as const, paypal_client_id: 'CLIENT' };
+  const hold = await mount(<Checkout listing={listing} info={live} me={buyer} onClose={() => {}}/>);
+  expect(document.querySelector<HTMLScriptElement>('script[data-parable-paypal]')?.src).toContain('intent=authorize');
+  await hold.unmount();
+  const instant = await mount(<Checkout listing={instantListing} info={live} me={buyer} onClose={() => {}}/>);
+  const scripts = document.querySelectorAll<HTMLScriptElement>('script[data-parable-paypal]');
+  expect(scripts).toHaveLength(1);
+  expect(scripts[0].src).toContain('intent=capture');
+  await instant.unmount();
+});
+
+test('shows the server error when the purchase cannot start', async () => {
+  stubFetch(() => { throw failure(404, 'listing is paused'); });
+  const navigate = vi.fn();
+  const view = await mount(<Checkout listing={listing} info={mockInfo} me={buyer} onClose={() => {}} navigate={navigate}/>);
+  await view.click([...view.host.querySelectorAll('button')].find(b => b.textContent === 'Pay with PayPal (simulated)')!);
   expect(view.host.querySelector('[role=alert]')?.textContent).toBe('listing is paused');
   expect(navigate).not.toHaveBeenCalled();
   await view.unmount();

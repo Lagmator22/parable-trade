@@ -318,19 +318,20 @@ def test_store_validation_and_cap(monkeypatch):
     datasets.store_dataset("s_b", "z", "USD", bars, "1d")
 
 
-def test_upload_provider_serves_candles_and_info():
+def test_upload_provider_never_serves_data():
     from parable.lab import markets
 
     bars = make_bars(40, interval_s=86400)
     stored = datasets.store_dataset("s_a", "Mine", "USD", bars, "1d")
     markets.reset_providers(offline=True)
-    assert markets.candles(stored["symbol"], "1d", 100) == bars
-    info = markets.symbol_info(stored["symbol"])
-    assert info.kind == "mine" and not info.live and markets.source_kind(stored["symbol"]) == "creator"
-    with pytest.raises(LabError):
-        markets.candles(stored["symbol"], "1h", 100)
-    with pytest.raises(LabError):
-        markets.symbol_info("upload:d_nope")
+    assert not hasattr(datasets, "raw_dataset")
+    for call in (lambda: markets.candles(stored["symbol"], "1d", 100), lambda: markets.latest(stored["symbol"]),
+                 lambda: markets.symbol_info(stored["symbol"]), lambda: markets.quote_currency(stored["symbol"])):
+        with pytest.raises(LabError) as err:
+            call()
+        assert err.value.status == 404
+    assert markets.source_kind(stored["symbol"]) == "creator"
+    assert markets.search(stored["name"], "all") == []
 
 
 def test_drafts_expire_and_are_owner_bound():

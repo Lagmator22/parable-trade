@@ -1,15 +1,13 @@
-import { useState } from 'react';
-import type { LedgerEntry, License } from '../api';
-import { brainName, cents, clockTime, mask, priceFromRaw, shortHash, signedBps, strategyName, usdFloat, usdMicro, bpsShort, dateTime } from '../format';
+import type { LedgerEntry, PurchaseView } from '../api';
+import { cents, clockTime, dateTime, mask, shortHash, signedBps } from '../format';
 import { buildSteps, kindLabel, type StepState } from '../steps';
-import type { Purchase } from '../purchase';
-import { Copy } from '../components/ui/Glyphs';
 
-const stateText: Record<StepState, string> = { done: 'Done', now: 'In progress', todo: 'Waiting', bad: 'Stopped' };
+const stateText: Record<StepState, string> = { done: 'Done', now: 'Now', todo: 'Next', bad: 'Stopped' };
 
-export function Timeline({ status }: { status: Purchase['status'] }) {
-  return <ol className="steps five-steps" aria-label="Purchase progress">
-    {buildSteps(status).map((step, index) => <li key={step.label} className={step.state}>
+export function Timeline({ purchase }: { purchase: PurchaseView }) {
+  const steps = buildSteps(purchase.status, purchase.mode, Boolean(purchase.paypal_capture_id));
+  return <ol className={`steps n${steps.length}`} aria-label="Purchase progress">
+    {steps.map((step, index) => <li key={step.label} className={step.state}>
       <span>{index + 1} · {stateText[step.state]}</span>{step.label}
     </li>)}
   </ol>;
@@ -17,24 +15,26 @@ export function Timeline({ status }: { status: Purchase['status'] }) {
 
 const asNumber = (value: unknown) => (typeof value === 'number' ? value : 0);
 
-export function TradeRow({ entry }: { entry: LedgerEntry }) {
+export function TradeRow({ entry, quote }: { entry: LedgerEntry; quote: string }) {
   const refused = entry.kind === 'run.refused';
   const side = String(entry.data.side ?? '').toUpperCase();
   const reason = String(entry.data.reason ?? entry.data.error ?? '');
+  const amount = asNumber(entry.data.amount) / 1_000_000;
+  const price = asNumber(entry.data.price) / 1e8;
   return <div className={`row trade ${refused ? 'refused' : ''}`}>
     <time>{clockTime(entry.at)}</time>
     <span>{refused ? `REFUSED ${side}`.trim() : side}</span>
-    <span>{usdMicro(asNumber(entry.data.amount_usd))}{entry.data.price ? ` @ ${usdFloat(priceFromRaw(asNumber(entry.data.price)))}` : ''}</span>
+    <span>{amount.toLocaleString(undefined, { maximumFractionDigits: 2 })} {quote}{price ? ` @ ${price.toLocaleString(undefined, { maximumFractionDigits: 4 })}` : ''}</span>
     <span className="reason">{reason}</span>
   </div>;
 }
 
-export function TradesFeed({ trades }: { trades: LedgerEntry[] }) {
+export function TradesFeed({ trades, quote }: { trades: LedgerEntry[]; quote: string }) {
   const newestFirst = [...trades].sort((a, b) => b.seq - a.seq);
   return <div className="box">
-    <div className="box-head"><span>Trades and refusals, with the bot’s reason</span><span>{trades.length} shown</span></div>
-    {newestFirst.length === 0 && <p className="empty">The bot has not traded yet.</p>}
-    <div className="trades">{newestFirst.map(entry => <TradeRow key={entry.seq} entry={entry}/>)}</div>
+    <div className="box-head"><span>Trades and refusals, with reasons</span><span>{trades.length} shown</span></div>
+    {newestFirst.length === 0 && <p className="empty">No trades yet.</p>}
+    <div className="trades">{newestFirst.map(entry => <TradeRow key={entry.seq} entry={entry} quote={quote}/>)}</div>
   </div>;
 }
 
@@ -55,62 +55,34 @@ function IdRow({ label, value }: { label: string; value: string }) {
   return value ? <div><dt>{label}</dt><dd title={value}>{mask(value)}</dd></div> : null;
 }
 
-export function Money({ purchase }: { purchase: Purchase }) {
+export function Money({ purchase }: { purchase: PurchaseView }) {
   return <div className="box">
-    <div className="box-head"><span>Money and PayPal references</span></div>
+    <div className="box-head"><span>Money</span></div>
     <dl className="kv">
-      <div><dt>Price</dt><dd>{cents(purchase.amountCents)}</dd></div>
-      <div><dt>Platform fee</dt><dd>{cents(purchase.feeCents)}</dd></div>
-      <div><dt>Seller payout</dt><dd>{cents(purchase.payoutCents)}</dd></div>
-      <IdRow label="PayPal order" value={purchase.orderId}/>
-      <IdRow label="Authorization" value={purchase.authorizationId}/>
-      <IdRow label="Capture" value={purchase.captureId}/>
-      <IdRow label="Payout batch" value={purchase.payoutBatchId}/>
-      <IdRow label="Payout status" value={purchase.payoutStatus}/>
+      <div><dt>Price</dt><dd>{cents(purchase.amount_cents)}</dd></div>
+      <div><dt>Platform fee</dt><dd>{cents(purchase.fee_cents)}</dd></div>
+      <div><dt>Seller payout</dt><dd>{cents(purchase.payout_cents)}</dd></div>
+      <IdRow label="PayPal order" value={purchase.paypal_order_id}/>
+      <IdRow label="Authorization" value={purchase.paypal_authorization_id}/>
+      <IdRow label="Capture" value={purchase.paypal_capture_id}/>
+      <IdRow label="Payout batch" value={purchase.paypal_payout_batch_id}/>
+      <IdRow label="Payout status" value={purchase.payout_status}/>
     </dl>
   </div>;
 }
 
-export function VerdictBox({ purchase }: { purchase: Purchase }) {
+export function VerdictBox({ purchase }: { purchase: PurchaseView }) {
   const verdict = purchase.verdict;
   if (!verdict) return null;
   return <div className={`box verdict ${verdict.passed ? 'passed' : 'failed'}`}>
-    <div className="box-head"><strong>{verdict.passed ? 'Passed' : 'Failed'}</strong><span>decided by a fixed rule, never by AI</span></div>
+    <div className="box-head"><strong>{verdict.passed ? 'Passed' : 'Failed'}</strong><span>a fixed rule decides, never AI</span></div>
     <p className="verdict-text">{verdict.explanation}</p>
     <dl className="kv">
-      <div><dt>Ended by</dt><dd>{verdict.cause.replace('_', ' ')}</dd></div>
+      <div><dt>Ended by</dt><dd>{String(verdict.cause).replace('_', ' ')}</dd></div>
       <div><dt>Return</dt><dd>{signedBps(verdict.return_bps)}</dd></div>
-      <div><dt>Required</dt><dd>{signedBps(verdict.min_return_bps)}</dd></div>
+      <div><dt>Needed</dt><dd>{signedBps(verdict.min_return_bps)}</dd></div>
       <div><dt>Trades</dt><dd>{verdict.trades}</dd></div>
       <div><dt>Refusals</dt><dd>{verdict.refusals}</dd></div>
     </dl>
   </div>;
 }
-
-export function LicenseBox({ license }: { license: License }) {
-  const [copied, setCopied] = useState(false);
-  async function copy() {
-    try {
-      await navigator.clipboard.writeText(license.key);
-      setCopied(true);
-    } catch {
-      setCopied(false);
-    }
-  }
-  return <div className="box license">
-    <div className="box-head"><strong>Your license</strong><span>unlocked because the bot survived</span></div>
-    <div className="license-key mono">
-      <code>{license.key}</code>
-      <button type="button" className="link-btn" onClick={copy}><Copy size={16}/>{copied ? 'Copied' : 'Copy'}</button>
-    </div>
-    <dl className="kv">
-      <div><dt>Brain</dt><dd>{brainName(license.bot.brain)}</dd></div>
-      <div><dt>Strategy</dt><dd>{strategyName(license.bot.strategy)}</dd></div>
-      <div><dt>Loss limit</dt><dd>{bpsShort(license.bot.max_loss_bps)}</dd></div>
-      <div><dt>Max trade</dt><dd>{usdMicro(license.bot.max_trade_usd)}</dd></div>
-      <div><dt>Fingerprint</dt><dd>{license.fingerprint}</dd></div>
-    </dl>
-    <p className="say">{license.instructions}</p>
-  </div>;
-}
-

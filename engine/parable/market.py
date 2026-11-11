@@ -1,22 +1,19 @@
-import hashlib
-import hmac
-import json
-
 from parable import ledger, referee, runs
-from parable.db import DB_LOCK, one, rows
+from parable.db import DB_LOCK, one
 from parable.errors import MarketError
+from parable.listing_views import list_listings, listing_detail, listing_summary
 from parable.listings import (
-    ListingInput,
+    attach_benchmark,
     create_listing,
-    get_listing,
-    list_listings,
+    ensure_tracks,
     listing_runs,
-    listing_summary,
     pause_listing,
-    start_practice,
+    poll_tracks,
+    resume_listing,
     summarize,
     totals_by_status,
 )
+from parable.purchase_views import get_purchase
 from parable.purchases import (
     cancel_purchase,
     cancel_unapproved,
@@ -25,125 +22,63 @@ from parable.purchases import (
     start_cancel_loop,
     start_purchase,
 )
-from parable.settlement import load_purchase, on_run_ended, settle_pending, update_purchase
+from parable.settlement import on_run_ended, settle_pending, update_purchase
 
 __all__ = [
-    "ListingInput",
     "MarketError",
+    "attach_benchmark",
     "cancel_purchase",
     "cancel_unapproved",
     "confirm_approval",
     "create_listing",
+    "ensure_tracks",
     "find_purchase_by_order",
-    "get_listing",
     "get_purchase",
     "install",
     "list_listings",
+    "listing_detail",
     "listing_runs",
+    "listing_summary",
     "market_stats",
     "on_webhook",
     "pause_listing",
+    "poll_tracks",
+    "resume_listing",
     "retry_settlement",
     "settle_pending",
     "start_cancel_loop",
-    "start_practice",
     "start_purchase",
 ]
 
-TIMELINE_TRADES = 20
-TIMELINE_ENTRIES = 500
 PAYOUT_FAILURES = ("DENIED", "FAILED", "UNCLAIMED", "RETURNED", "BLOCKED")
-LICENSE_STATUSES = ("captured", "paid_out")
-LICENSE_INSTRUCTIONS = (
-    "Run this bot with the rules above. The fingerprint identifies exactly what was tested on probation. "
-    "Keep the license key private."
-)
 
 
 def install(manager: runs.RunManager) -> None:
     if on_run_ended not in manager.listeners:
         manager.add_end_listener(on_run_ended)
-
-
-def mask_id(value: str | None) -> str:
-    return f"***{value[-6:]}" if value else ""
+    manager.add_poll_hook(poll_tracks)
 
 
 def find_purchase_by_order(order_id: str) -> dict | None:
     return one("SELECT * FROM purchases WHERE paypal_order_id = ?", (order_id,))
 
 
-def token_matches(purchase: dict, buyer_token: str | None) -> bool:
-    if not buyer_token:
-        return False
-    supplied = hashlib.sha256(buyer_token.encode()).hexdigest()
-    return hmac.compare_digest(supplied, purchase["buyer_token_hash"] or "")
-
-
-def timeline_for(purchase_id: str, run_id: int | None) -> list[dict]:
-    entries = ledger.entries(subject=f"purchase:{purchase_id}", limit=TIMELINE_ENTRIES)
-    if run_id:
-        entries += ledger.entries(subject=f"run:{run_id}", limit=TIMELINE_ENTRIES)
-    trades = [entry for entry in entries if entry["kind"] == "run.trade"][:TIMELINE_TRADES]
-    others = [entry for entry in entries if entry["kind"] != "run.trade"]
-    return sorted(trades + others, key=lambda entry: entry["seq"])
-
-
-def public_run(purchase: dict) -> dict | None:
-    if not purchase["run_id"]:
-        return None
-    run = referee.get_run(purchase["run_id"])
-    run.pop("rules_json", None)
-    return run
-
-
-def license_for(purchase: dict, listing: dict) -> dict | None:
-    if purchase["status"] not in LICENSE_STATUSES or not purchase["license_key"]:
-        return None
-    return {"key": purchase["license_key"], "bot": listing["rules"], "fingerprint": listing["fingerprint"],
-            "instructions": LICENSE_INSTRUCTIONS}
-
-
-def get_purchase(purchase_id: str, buyer_token: str | None = None) -> dict:
-    purchase = load_purchase(purchase_id)
-    listing = listing_summary(purchase["listing_id"])
-    verdict = json.loads(purchase["verdict_json"]) if purchase["verdict_json"] else None
-    view = {
-        "id": purchase["id"],
-        "status": purchase["status"],
-        "via": purchase["via"],
-        "listing": listing,
-        "amount_cents": purchase["amount_cents"],
-        "fee_cents": purchase["fee_cents"],
-        "payout_cents": purchase["amount_cents"] - purchase["fee_cents"],
-        "paypal_order_id": mask_id(purchase["paypal_order_id"]),
-        "paypal_authorization_id": mask_id(purchase["paypal_authorization_id"]),
-        "paypal_capture_id": mask_id(purchase["paypal_capture_id"]),
-        "paypal_payout_batch_id": mask_id(purchase["paypal_payout_batch_id"]),
-        "payout_status": purchase["payout_status"] or "",
-        "min_return_bps": listing["min_return_bps"],
-        "threshold": {"min_return_bps": listing["min_return_bps"], "max_loss_bps": listing["rules"]["max_loss_bps"]},
-        "run": public_run(purchase),
-        "verdict": verdict,
-        "timeline": timeline_for(purchase["id"], purchase["run_id"]),
-        "error": purchase["error"] or "",
-        "created_at": purchase["created_at"],
-        "updated_at": purchase["updated_at"],
-        "license": None,
-    }
-    if token_matches(purchase, buyer_token):
-        view["license"] = license_for(purchase, listing)
-    return view
+def count(sql: str) -> int:
+    return one(sql)["n"]
 
 
 def market_stats() -> dict:
     totals = summarize(totals_by_status())
     alive = referee.list_runs(status="alive", limit=100_000)
     return {
-        "listings": len(rows("SELECT id FROM listings WHERE active = 1")),
-        "sellers": len(rows("SELECT id FROM sellers")),
+        "listings": count("SELECT COUNT(*) AS n FROM listings WHERE active = 1"),
+        "sellers": count("SELECT COUNT(*) AS n FROM sellers"),
+        "agents": count("SELECT COUNT(*) AS n FROM agents"),
+        "proofs": count("SELECT COUNT(*) AS n FROM proofs"),
+        "reruns": count("SELECT COUNT(*) AS n FROM proofs WHERE kind = 'rerun'"),
         "runs_alive": len(alive),
         "probations_running": sum(run["purpose"] == "probation" for run in alive),
+        "tracks_running": sum(run["purpose"] == "track" for run in alive),
         "passed": totals["passed"],
         "failed": totals["failed"],
         "held_cents": totals["held_cents"],

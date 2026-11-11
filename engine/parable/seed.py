@@ -1,20 +1,17 @@
-import hashlib
 import logging
-import random
-from typing import Callable
 
-from parable import bot_runner, prices, referee
-from parable.db import execute, one
+from parable import agents, proofs
+from parable.config import get_settings
+from parable.db import one
 from parable.identity import upsert_seller
-from parable.listings import ListingInput, create_listing
-from parable.models import BotRules
+from parable.lab import markets
+from parable.lab.backtest import run_backtest
+from parable.lab.consts import MIN_BARS
+from parable.lab.templates import template_spec
+from parable.listings import create_listing
+from parable.models import NewListing
 
 log = logging.getLogger("parable.seed")
-
-USD = 1_000_000
-START_PRICE = 3000 * prices.PRICE_DECIMALS
-TICKS_PER_RUN = 90
-EXPIRED_AT = 0
 
 SELLERS = (
     {"key": "priya", "name": "Priya Raman", "email": "priya.raman@example.com"},
@@ -22,82 +19,116 @@ SELLERS = (
     {"key": "dana", "name": "Dana Whitfield", "email": "dana.whitfield@example.com"},
 )
 
-LISTINGS = (
-    {
-        "seller": "priya", "strategy": "mean_revert", "title": "Steady Reverter",
-        "pitch": "Trades small and only against sharp moves. Built to stay alive, not to win big.",
-        "max_trade_usd": 60 * USD, "max_loss_bps": 300, "price_cents": 1500, "probation_s": 900,
-        "min_return_bps": -50, "volatility_bps": 55, "runs": 6,
-    },
-    {
-        "seller": "tomas", "strategy": "momentum", "title": "Trend Rider",
-        "pitch": "Follows the price. Rides rallies, steps aside in drops. Mid-sized trades.",
-        "max_trade_usd": 150 * USD, "max_loss_bps": 250, "price_cents": 2500, "probation_s": 1800,
-        "min_return_bps": 0, "volatility_bps": 34, "runs": 5,
-    },
-    {
-        "seller": "dana", "strategy": "dip_buyer", "title": "Dip Hunter",
-        "pitch": "Buys weakness and sells strength with medium-sized trades and a tight stop.",
-        "max_trade_usd": 100 * USD, "max_loss_bps": 250, "price_cents": 1900, "probation_s": 1200,
-        "min_return_bps": 0, "volatility_bps": 22, "runs": 4,
-    },
-    {
-        "seller": "tomas", "strategy": "yolo", "title": "All-In Gambler",
-        "pitch": "Maximum size on every trade. Fast and reckless. Expect it to die often.",
-        "max_trade_usd": 400 * USD, "max_loss_bps": 300, "price_cents": 900, "probation_s": 300,
-        "min_return_bps": 100, "volatility_bps": 55, "runs": 4,
-    },
+ASSETS = {
+    "btc": {"live": ("binance:BTCUSDT", "1h"), "sample": ("sample:BTCUSDT", "1h")},
+    "eth": {"live": ("binance:ETHUSDT", "4h"), "sample": ("sample:ETHUSDT", "1d")},
+    "gold": {"live": ("binance:PAXGUSDT", "1h"), "sample": ("sample:PAXGUSDT", "1d")},
+    "sol": {"live": ("binance:SOLUSDT", "1h"), "sample": ("sample:SOLUSDT", "1h")},
+    "eur": {"live": None, "sample": ("sample:EURUSD", "1d")},
+}
+
+AGENTS = (
+    {"seller": "priya", "asset": "btc", "template": "trend", "title": "Bitcoin Trend Rider", "price_cents": 2900,
+     "pitch": "Follows the Bitcoin trend with a stop loss. Every number is reproducible from its proof."},
+    {"seller": "priya", "asset": "eth", "template": "rsi", "title": "Ether RSI Swing", "price_cents": 1900,
+     "pitch": "Buys oversold Ether and sells when momentum recovers."},
+    {"seller": "tomas", "asset": "gold", "template": "mean_revert", "title": "Gold Mean Reverter",
+     "price_cents": 3900, "pitch": "Fades stretched moves in tokenised gold and waits for the average to pull back."},
+    {"seller": "tomas", "asset": "sol", "template": "breakout", "title": "Solana Breakout", "price_cents": 1400,
+     "pitch": "Enters when Solana breaks its recent high and rides it with a trailing exit."},
+    {"seller": "dana", "asset": "btc", "template": "macd", "title": "Bitcoin MACD Pulse", "price_cents": 4900,
+     "pitch": "Trades Bitcoin MACD momentum crossovers with fixed risk."},
+    {"seller": "dana", "asset": "eur", "template": "bollinger", "title": "Euro Band Trader", "price_cents": 900,
+     "pitch": "Trades the euro against the dollar when price stretches outside its Bollinger bands.",
+     "fallback_asset": "eth"},
 )
 
+FAST_DEMO = {"seller": "priya", "asset": "btc", "template": "trend", "title": "Fast Demo Agent (1s, 2-minute hold)",
+             "price_cents": 900, "symbol": "binance:BTCUSDT", "interval": "1s", "mode": "hold", "trial_s": 120,
+             "pitch": "A one-second Bitcoin agent with a 120-second hold, so you can watch the whole hold, verdict "
+                      "and capture-or-void cycle in two minutes."}
 
-def walk_source(seed: str, volatility_bps: int) -> Callable[[], int]:
-    rng = random.Random(int(hashlib.sha256(seed.encode()).hexdigest()[:12], 16))
-    state = {"price": START_PRICE}
-
-    def next_price() -> int:
-        step = rng.randint(-volatility_bps, volatility_bps)
-        state["price"] = state["price"] * (10_000 + step) // 10_000
-        return state["price"]
-
-    return next_price
-
-
-def run_instantly(seller_id: str, listing: dict, rules: BotRules, label: str, volatility_bps: int) -> dict:
-    prices.set_price_source(walk_source(label, volatility_bps))
-    run = referee.open_run(seller_id, rules, "practice", f"{listing['title']} (practice)", listing_id=listing["id"])
-    samples: list[int] = []
-    for _ in range(TICKS_PER_RUN):
-        bot_runner.take_turn(run["id"], rules, samples)
-        if referee.check(run["id"]) is not None:
-            break
-    if referee.get_run(run["id"])["status"] == "alive":
-        execute("UPDATE runs SET expires_at = ? WHERE id = ?", (EXPIRED_AT, run["id"]))
-        referee.check(run["id"])
-    return referee.get_run(run["id"])
-
-
-def seed_listing(sellers: dict[str, dict], spec: dict) -> dict:
-    owner = sellers[spec["seller"]]
-    fields = {key: spec[key] for key in ListingInput.model_fields if key in spec}
-    listing = create_listing(owner["id"], ListingInput(brain="rule", **fields))
-    rules = BotRules.model_validate(listing["rules"])
-    for number in range(spec["runs"]):
-        run_instantly(owner["id"], listing, rules, f"{listing['title']}:{number}", spec["volatility_bps"])
-    return listing
+BARS_WANTED = 1000
 
 
 def seed_sellers() -> dict[str, dict]:
-    return {
-        seller["key"]: upsert_seller("SEED-" + seller["key"].upper(), seller["name"], seller["email"], True)
-        for seller in SELLERS
-    }
+    return {seller["key"]: upsert_seller("SEED-" + seller["key"].upper(), seller["name"], seller["email"], True)
+            for seller in SELLERS}
+
+
+def fetch(symbol: str, interval: str) -> list | None:
+    try:
+        bars = markets.candles(symbol, interval, BARS_WANTED)
+    except Exception as err:
+        log.info("seed could not fetch %s %s: %s", symbol, interval, type(err).__name__)
+        return None
+    return bars if len(bars) >= MIN_BARS else None
+
+
+def markets_online() -> bool:
+    return not get_settings().markets_offline and fetch("binance:BTCUSDT", "1h") is not None
+
+
+def choose_data(spec: dict, online: bool) -> tuple[str, str, list] | None:
+    asset = ASSETS[spec["asset"]]
+    options = []
+    if online and asset["live"]:
+        options.append(asset["live"])
+    if online and spec.get("fallback_asset") and not asset["live"]:
+        options.append(ASSETS[spec["fallback_asset"]]["live"])
+    options.append(asset["sample"])
+    for symbol, interval in options:
+        bars = fetch(symbol, interval)
+        if bars:
+            return symbol, interval, bars
+    return None
+
+
+def seed_listing(owner: dict, spec: dict, symbol: str, interval: str, bars: list, mode: str, trial_s: int) -> dict:
+    strategy = template_spec(spec["template"], symbol, interval).model_copy(
+        update={"name": spec["title"][:60]})
+    agent = agents.create_agent(owner["id"], spec["title"][:60], symbol, interval)
+    version = agents.save_version(owner["id"], agent["id"], strategy, built_by=f"template:{spec['template']}")
+    result = run_backtest(strategy, bars, symbol=symbol, interval=interval, quote=markets.quote_currency(symbol),
+                          source_kind=markets.source_kind(symbol))
+    proof = proofs.store_proof("backtest", version["id"], strategy, result, bars=bars)
+    return create_listing(owner["id"], NewListing(
+        version_id=version["id"], title=spec["title"], pitch=spec["pitch"], price_cents=spec["price_cents"],
+        mode=mode, trial_s=trial_s, min_return_bps=0, max_loss_bps=1000, proof_id=proof["id"],
+        allow_test_drive=True))
+
+
+def seed_regular(sellers: dict, online: bool) -> int:
+    created = 0
+    for number, spec in enumerate(AGENTS):
+        if one("SELECT id FROM listings WHERE title = ?", (spec["title"],)):
+            continue
+        chosen = choose_data(spec, online)
+        if chosen is None:
+            continue
+        symbol, interval, bars = chosen
+        live = not symbol.startswith("sample:")
+        mode = "hold" if live and number % 2 == 0 else "instant"
+        seed_listing(sellers[spec["seller"]], spec, symbol, interval, bars, mode, 1800)
+        created += 1
+    return created
+
+
+def seed_fast_demo(sellers: dict) -> int:
+    spec = FAST_DEMO
+    if one("SELECT id FROM listings WHERE title = ?", (spec["title"],)):
+        return 0
+    bars = fetch(spec["symbol"], spec["interval"])
+    if bars is None:
+        return 0
+    seed_listing(sellers[spec["seller"]], spec, spec["symbol"], spec["interval"], bars, spec["mode"], spec["trial_s"])
+    return 1
 
 
 def seed_demo() -> int:
-    if one("SELECT id FROM listings LIMIT 1"):
-        return 0
-    try:
-        sellers = seed_sellers()
-        return len([seed_listing(sellers, spec) for spec in LISTINGS])
-    finally:
-        prices.set_price_source(None)
+    sellers = seed_sellers()
+    online = markets_online()
+    created = seed_regular(sellers, online)
+    if online:
+        created += seed_fast_demo(sellers)
+    return created

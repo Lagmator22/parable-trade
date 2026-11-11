@@ -180,7 +180,7 @@ async def mock_login_submit(request: Request):
 
 
 @router.get("/api/me")
-def me(request: Request):
+def me(request: Request, response: Response):
     seller = current_seller(request)
     visible = None
     if seller:
@@ -191,7 +191,9 @@ def me(request: Request):
             "email_masked": mask_email(seller["email"]),
         }
     mode = "mock" if is_mock() else paypal_mode()
-    return {"seller": visible, "paypal_mode": mode}
+    quota = importlib.import_module("parable.lab.quota")
+    tries = quota.free_tries(quota.visitor_id(request, response))
+    return {"seller": visible, "paypal_mode": mode, "free_tries": tries}
 
 
 @router.post("/api/logout")

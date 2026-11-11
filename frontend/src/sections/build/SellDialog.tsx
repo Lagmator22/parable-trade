@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { createListing, type SaleMode } from '../../api';
-import { promise } from '../../format';
+import { instantOnly, promise } from '../../format';
 import { Button } from '../../components/ui/Button';
 import type { Build } from './useBuild';
 
@@ -10,7 +10,9 @@ export function SellDialog({ build, onClose }: { build: Build; onClose: () => vo
   const [title, setTitle] = useState(build.spec?.name ?? '');
   const [pitch, setPitch] = useState(build.spec?.summary ?? '');
   const [price, setPrice] = useState('19');
-  const [mode, setMode] = useState<SaleMode>('hold');
+  const holdOff = instantOnly(build.spec?.symbol ?? build.market?.symbol ?? '');
+  const [picked, setMode] = useState<SaleMode>('hold');
+  const mode: SaleMode = holdOff ? 'instant' : picked;
   const [trial, setTrial] = useState(86400);
   const [minReturn, setMinReturn] = useState('0');
   const [maxLoss, setMaxLoss] = useState('10');
@@ -48,9 +50,10 @@ export function SellDialog({ build, onClose }: { build: Build; onClose: () => vo
         <label className="field"><span className="field-label">Pitch</span><textarea rows={2} value={pitch} maxLength={600} onChange={e => setPitch(e.target.value)}/></label>
         <label className="field narrow"><span className="field-label">Price (USD)</span><input inputMode="decimal" value={price} onChange={e => setPrice(e.target.value)}/></label>
         <div className="toggle" role="group" aria-label="Sale mode">
-          <button type="button" aria-pressed={mode === 'hold'} onClick={() => setMode('hold')}>Hold</button>
+          <button type="button" aria-pressed={mode === 'hold'} disabled={holdOff} onClick={() => setMode('hold')}>Pay if proven</button>
           <button type="button" aria-pressed={mode === 'instant'} onClick={() => setMode('instant')}>Instant</button>
         </div>
+        {holdOff && <p className="say" role="note">Pay if proven needs a live market to track. Uploaded and sample data are instant only.</p>}
         <p className="say">{mode === 'hold' ? 'Buyer pays after a live trial. You are paid only if it passes.' : 'Buyer pays now. You are paid at once.'}</p>
         {mode === 'hold' && <>
           <div className="toggle" role="group" aria-label="Trial length">

@@ -5,6 +5,7 @@
 .purchase-row:hover { background: var(--hover); color: inherit; }
 .purchase-row strong { display: block; font-size: 18px; }
 
+.steps.n3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .steps { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--ink); background: var(--card); }
 .steps li { padding: 14px; border-right: 1px solid var(--ink); font-size: 14px; font-weight: 700; color: var(--grey); }
 .steps li:last-child { border-right: 0; }
@@ -38,7 +39,7 @@
 
 @media (max-width: 900px) {
   .purchase-cols { grid-template-columns: 1fr; }
-  .steps { grid-template-columns: 1fr; }
+  .steps, .steps.n3 { grid-template-columns: 1fr; }
   .steps li { border-right: 0; border-bottom: 1px solid var(--ink); display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
   .steps li:last-child { border-bottom: 0; }
   .steps li span { margin: 0; order: 2; }

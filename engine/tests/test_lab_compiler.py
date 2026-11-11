@@ -222,3 +222,14 @@ def test_ideas_failures_and_limits(script):
     with pytest.raises(LabError) as err:
         compiler.ideas(base, "x", AiAuth(provider="platform", model="jev:a"))
     assert err.value.status == 400
+
+
+def test_wide_range_without_step_is_repaired():
+    raw = {**GOOD, "params": {"fast": {"value": 12, "min": 2, "max": 500}, "slow": {"value": 26, "min": 20, "max": 60, "step": 0.1}}}
+    spec = compiler.to_spec(raw, "fake:X", "1h", "x:y")
+    assert spec.params["fast"].step >= 10 and spec.params["slow"].step >= 1
+    assert (spec.params["fast"].max - spec.params["fast"].min) / spec.params["fast"].step + 1 <= 50
+    tidy = compiler.to_spec(GOOD, "fake:X", "1h", "x:y")
+    assert tidy.params["fast"].step == 1 and tidy.params["slow"].step == 2
+    with pytest.raises(compiler.SpecError):
+        compiler.to_spec({**GOOD, "params": {"fast": {"value": 99, "min": 2, "max": 50}}}, "fake:X", "1h", "x:y")

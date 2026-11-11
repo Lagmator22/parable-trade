@@ -30,6 +30,7 @@ function route(method: string, path: string): unknown {
     { id: 'speed', text: 'Speed', options: [{ id: 'fast', label: 'Fast' }, { id: 'medium', label: 'Medium' }] },
   ] };
   if (path.startsWith('/api/ai/models')) return { platform: [{ id: 'gemini:x', provider: 'gemini', model: 'x', label: 'Gemini X', available: true, free: true }], own: [], free_tries: { limit: 5, used: 0, remaining: 5 } };
+  if (path.startsWith('/api/lab/templates/')) return { spec, summary: 'Follows trend', rules: [{ kind: 'entry', text: 'Buy when EMA(12) crosses above EMA(26)' }], built_by: 'template:trend', attempts: 0, free_tries: { limit: 5, used: 0, remaining: 5 } };
   if (path === '/api/ai/compile') return { spec, summary: 'Follows trend', rules: [{ kind: 'entry', text: 'Buy when EMA(12) crosses above EMA(26)' }], built_by: 'template:trend', attempts: 1, free_tries: { limit: 5, used: 0, remaining: 5 } };
   if (path === '/api/lab/validate') return { ok: true, errors: [], spec_hash: 'sh', rules: [{ kind: 'entry', text: 'Buy when EMA(12) crosses above EMA(26)' }] };
   if (path === '/api/lab/backtest') return { metrics, curve: [[0, 10000, 10000], [3600, 11250, 10400]], trades: [], markers: [{ t: 3600, side: 'buy', price: 1.5, text: '' }], data, quote: 'USDT', start_cash: 10000, spec_hash: 'sh', engine_version: 'lab-1', result_hash: 'r'.repeat(64) };
@@ -62,9 +63,8 @@ describe('Build flow', () => {
     await settle(() => expect(press(view.host, 'Ride moves')?.disabled).toBe(false));
     await settle(() => expect(calls.some(c => c.path === '/api/ai/questionnaire')).toBe(true));
     await view.click(press(view.host, 'Ride moves')!);
-    await settle(() => expect(calls.find(c => c.path === '/api/ai/compile')).toBeDefined());
-    const compile = calls.find(c => c.path === '/api/ai/compile')!;
-    expect(compile.body).toMatchObject({ symbol: 'sample:BTCUSDT', interval: '1h', answers: { family: 'trend', speed: 'medium' } });
+    await settle(() => expect(calls.find(c => c.path.startsWith('/api/lab/templates/'))).toBeDefined());
+    expect(calls.find(c => c.path.startsWith('/api/lab/templates/'))!.path).toBe('/api/lab/templates/trend?symbol=sample%3ABTCUSDT&interval=1h');
     await settle(() => expect(view.host.textContent).toContain('Formulas are valid.'));
     expect(view.host.textContent).toContain('Buy when EMA(12) crosses above EMA(26)');
 

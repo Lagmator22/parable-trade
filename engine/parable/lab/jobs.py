@@ -39,8 +39,15 @@ def update(job_id: str, **fields) -> None:
 def run(job_id: str, fn: Callable[[Callable[[float, str], None]], dict]) -> None:
     update(job_id, status="running")
 
-    def progress(fraction: float, message: str = "") -> None:
-        update(job_id, progress=min(1.0, max(0.0, float(fraction))), message=str(message)[:MESSAGE_CHARS])
+    def progress(fraction: float | None = None, message: str | None = None, partial: dict | None = None) -> None:
+        fields: dict = {}
+        if fraction is not None:
+            fields["progress"] = min(1.0, max(0.0, float(fraction)))
+        if message is not None:
+            fields["message"] = str(message)[:MESSAGE_CHARS]
+        if partial is not None:
+            fields["result"] = partial
+        update(job_id, **fields)
 
     try:
         result = fn(progress)

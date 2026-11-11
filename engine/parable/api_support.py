@@ -8,6 +8,7 @@ from parable.errors import LabError, MarketError
 from parable.identity import current_seller
 from parable.paypal import PayPalError
 from parable.referee import RefereeError, RunNotFound
+from parable.run_views import public_run
 
 log = logging.getLogger("parable.api")
 
@@ -15,16 +16,18 @@ log = logging.getLogger("parable.api")
 def require_seller(request: Request) -> dict:
     seller = current_seller(request)
     if seller is None:
-        raise HTTPException(401, "sign in with PayPal first")
+        raise LabError(401, "unauthorized", "sign in with PayPal first")
     return seller
 
 
-def public_run(run: dict) -> dict:
-    return {key: value for key, value in run.items() if key != "rules_json"}
+require_account = require_seller
 
 
 def failure(status: int, detail: str) -> JSONResponse:
     return JSONResponse({"detail": detail}, status_code=status)
+
+
+__all__ = ["public_run"]
 
 
 def describe_validation(err: RequestValidationError) -> str:
@@ -55,6 +58,10 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RunNotFound)
     async def run_missing(request: Request, err: RunNotFound):
         return failure(404, "run not found")
+
+    @app.exception_handler(HTTPException)
+    async def http_error(request: Request, err: HTTPException):
+        return failure(err.status_code, str(err.detail))
 
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request: Request, err: RequestValidationError):

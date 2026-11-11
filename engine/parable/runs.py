@@ -2,11 +2,11 @@ import logging
 import threading
 from typing import Callable
 
-from parable import bot_runner, referee
+from parable import bot_agent, referee
 from parable.config import get_settings
 from parable.db import one
 from parable.errors import LabError, MarketError
-from parable.models import BotRules, RunRules
+from parable.models import RunRules
 
 log = logging.getLogger("parable.runs")
 
@@ -17,10 +17,8 @@ ALL_ALIVE_RUNS = 100_000
 _live_managers: list["RunManager"] = []
 
 
-def rules_of(run: dict) -> BotRules | RunRules:
-    if run.get("version_id"):
-        return RunRules.model_validate(run["rules"])
-    return BotRules.model_validate(run["rules"])
+def rules_of(run: dict) -> RunRules:
+    return RunRules.model_validate(run["rules"])
 
 
 class RunManager:
@@ -61,7 +59,7 @@ class RunManager:
         if len(alive) >= get_settings().max_live_runs_per_account:
             raise MarketError("too many live practice runs; stop one first", 429)
 
-    def start(self, account_id: str, rules: BotRules | RunRules, purpose: str, name: str,
+    def start(self, account_id: str, rules: RunRules, purpose: str, name: str,
               listing_id: str | None = None, purchase_id: str | None = None) -> dict:
         if purpose == "practice":
             self.check_practice_cap(account_id)
@@ -84,7 +82,7 @@ class RunManager:
                          max_trade=cash, max_loss_bps=max_loss_bps, lease_seconds=lease_seconds)
         return self.start(account_id, rules, purpose, name, listing_id, purchase_id)
 
-    def spawn(self, run_id: int, rules: BotRules | RunRules) -> None:
+    def spawn(self, run_id: int, rules: RunRules) -> None:
         with self.workers_lock:
             existing = self.workers.get(run_id)
             if existing is not None and existing[0].is_alive():
@@ -95,12 +93,9 @@ class RunManager:
             self.workers[run_id] = (thread, stop_event)
         thread.start()
 
-    def work(self, run_id: int, rules: BotRules | RunRules, stop_event: threading.Event) -> None:
+    def work(self, run_id: int, rules: RunRules, stop_event: threading.Event) -> None:
         try:
-            if isinstance(rules, RunRules):
-                bot_runner.run_agent(run_id, stop_event, self.interval_s)
-            else:
-                bot_runner.run_bot(run_id, rules, stop_event, self.interval_s)
+            bot_agent.run_agent(run_id, stop_event, self.interval_s)
         except Exception:
             log.exception("bot thread for run %s crashed", run_id)
 

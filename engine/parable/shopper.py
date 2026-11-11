@@ -1,19 +1,13 @@
 import json
 
 from parable import analyst
-from parable.listings import list_listings
+from parable.listing_views import list_listings
 
 MAX_QUERY = 400
 MAX_REASON = 400
 MAX_ALTERNATIVES = 2
 CAUTIOUS_WORDS = ("low-risk", "low risk", "safe", "safer", "careful", "conservative", "cautious")
-NO_MATCH_REASON = "No active bot fits that budget yet."
-
-
-def survival_label(record: dict) -> str:
-    if not record["ended"]:
-        return "no finished runs yet"
-    return f"{record['survived']} of {record['ended']} runs survived"
+NO_MATCH_REASON = "No active agent fits that budget yet."
 
 
 def affordable(listings: list[dict], budget_cents: int | None) -> list[dict]:
@@ -22,11 +16,16 @@ def affordable(listings: list[dict], budget_cents: int | None) -> list[dict]:
     return [listing for listing in listings if listing["price_cents"] <= budget_cents]
 
 
+def excess_return(listing: dict) -> float:
+    head = listing["headline"]
+    return (head.get("total_return_pct") or 0) - (head.get("benchmark_return_pct") or 0)
+
+
 def score(listing: dict, cautious: bool) -> float:
-    record = listing["seller_record"]
-    base = record["survival_rate"] * 100 + min(record["ended"], 5) * 2 + record["avg_return_bps"] / 100
-    base -= 0 if record["ended"] else 40
-    return base - listing["rules"]["max_loss_bps"] / 20 if cautious else base
+    drawdown = listing["headline"].get("max_drawdown_pct") or 0
+    reruns = listing["reruns"]
+    base = excess_return(listing) + 2 * reruns["matched"] - 5 * (reruns["count"] - reruns["matched"])
+    return base - drawdown * (1.0 if cautious else 0.25)
 
 
 def wants_caution(query: str) -> bool:
@@ -40,9 +39,10 @@ def ranked(listings: list[dict], query: str) -> list[dict]:
 
 
 def fallback_reason(listing: dict) -> str:
-    record = listing["seller_record"]
-    return (f"{listing['title']} has the strongest record within your limits: {survival_label(record)}, "
-            f"priced at ${listing['price_cents'] / 100:.2f}, and you pay only if it passes its probation.")
+    head = listing["headline"]
+    return (f"{listing['title']} returned {head.get('total_return_pct', 0):+.1f}% in its proof against "
+            f"{head.get('benchmark_return_pct', 0):+.1f}% for buy and hold, with a worst drawdown of "
+            f"{head.get('max_drawdown_pct', 0):.1f}%, priced at ${listing['price_cents'] / 100:.2f}.")
 
 
 def fallback(candidates: list[dict], query: str) -> dict:
@@ -54,30 +54,33 @@ def fallback(candidates: list[dict], query: str) -> dict:
 
 
 def compact(listing: dict) -> dict:
-    record = listing["seller_record"]
+    head, track = listing["headline"], listing["track"]
     return {
         "id": listing["id"],
         "title": listing["title"],
         "pitch": listing["pitch"][:200],
-        "strategy": listing["rules"]["strategy"],
+        "asset": listing["symbol"],
+        "kind": listing["kind"],
+        "data_badge": {"market": "market data", "sample": "sample data", "creator": "creator data"}.get(
+            listing["data"]["source_kind"], "market data") if listing["data"] else "market data",
+        "mode": listing["mode"],
         "price_dollars": listing["price_cents"] / 100,
-        "probation_minutes": listing["probation_s"] // 60,
-        "loss_limit_percent": listing["rules"]["max_loss_bps"] / 100,
-        "promised_min_return_percent": listing["min_return_bps"] / 100,
-        "finished_runs": record["ended"],
-        "survived_runs": record["survived"],
-        "average_return_percent": record["avg_return_bps"] / 100,
-        "worst_return_percent": record["worst_return_bps"] / 100,
-        "probations_passed": record["probation_passed"],
-        "probations_failed": record["probation_failed"],
+        "proof_return_percent": head.get("total_return_pct"),
+        "buy_and_hold_percent": head.get("benchmark_return_pct"),
+        "max_drawdown_percent": head.get("max_drawdown_pct"),
+        "trades": head.get("trades"),
+        "reruns_matched": listing["reruns"]["matched"],
+        "reruns_total": listing["reruns"]["count"],
+        "live_track_percent": track["equity_pct"] if track else None,
+        "live_track_seconds": track["seconds"] if track else None,
     }
 
 
 def build_prompt(query: str, candidates: list[dict]) -> str:
     return (
-        "You are a careful shopping agent for a marketplace of AI trading bots. The buyer pays only if a bot "
-        "survives its probation. Pick the single best bot for the buyer's request using only the listings given "
-        "and their numbers; never invent numbers or ids. Prefer proven records over promises.\n"
+        "You are a careful shopping agent for a marketplace of trading agents. Each agent shows a reproducible "
+        "backtest proof and a live track record. Pick the single best agent for the buyer's request using only the "
+        "listings given and their numbers; never invent numbers or ids. Prefer proven records over promises.\n"
         f"Buyer request: {json.dumps(query)}\n"
         f"Listings: {json.dumps([compact(listing) for listing in candidates])}\n"
         'Reply with JSON only: {"listing_id": "<one id from the listings>", "reason": "<one or two sentences>", '

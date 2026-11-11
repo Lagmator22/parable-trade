@@ -1,8 +1,9 @@
 import json
+import math
 
 from parable.errors import LabError
 from parable.lab import llm
-from parable.lab.consts import MAX_STEPS_CHARS
+from parable.lab.consts import MAX_PARAM_VALUES, MAX_STEPS_CHARS
 from parable.lab.describe import CompileResult, RuleChip, describe_spec
 from parable.lab.formula import FORMULA_REFERENCE
 from parable.lab.llm import AiAuth
@@ -50,6 +51,33 @@ def build_prompt(steps: str, symbol: str, interval: str, base: StrategySpec | No
     return "\n\n".join(parts)
 
 
+def widen_step(param) -> None:
+    if not isinstance(param, dict):
+        return
+    try:
+        low, high = float(param["min"]), float(param["max"])
+    except (KeyError, TypeError, ValueError):
+        return
+    if not (math.isfinite(low) and math.isfinite(high)) or high <= low:
+        return
+    try:
+        step = float(param.get("step", 1.0))
+    except (TypeError, ValueError):
+        step = 1.0
+    need = (high - low) / (MAX_PARAM_VALUES - 1)
+    if not math.isfinite(step) or step <= 0 or (high - low) / step + 1 > MAX_PARAM_VALUES:
+        magnitude = 10 ** math.floor(math.log10(need))
+        param["step"] = next((m * magnitude for m in (1, 2, 2.5, 5, 10) if m * magnitude >= need * 1.0001), need)
+
+
+def repair_params(data: dict) -> None:
+    params = data.get("params")
+    if isinstance(params, dict):
+        data["params"] = {k: dict(v) if isinstance(v, dict) else v for k, v in params.items()}
+        for param in data["params"].values():
+            widen_step(param)
+
+
 def to_spec(raw, symbol: str, interval: str, built_by: str) -> StrategySpec:
     if not isinstance(raw, dict):
         raise SpecError(["the answer was not a JSON object"])
@@ -57,6 +85,7 @@ def to_spec(raw, symbol: str, interval: str, built_by: str) -> StrategySpec:
     data["name"] = str(data.get("name") or "Untitled")[:60]
     data["summary"] = str(data.get("summary") or "")[:300]
     data.update(symbol=symbol, interval=interval, built_by=built_by)
+    repair_params(data)
     return parse_spec(data)
 
 

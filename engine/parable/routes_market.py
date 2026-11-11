@@ -1,24 +1,17 @@
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, Field
 
-from parable import analyst, bot_runner, diligence, ledger, market, prices, shopper
-from parable.api_support import public_run, require_seller
+from parable import analyst, diligence, ledger, market, proofs, shopper
+from parable.api_support import require_seller
 from parable.config import get_settings, paypal_mode
-from parable.models import PRESETS
+from parable.lab import quota
+from parable.lab.consts import (ASSET_KINDS, INTERVALS, MAX_BARS, MAX_FORMULA_LEN, MAX_GRID, MAX_PARAMS,
+                                MAX_SPEC_BYTES, MAX_STEPS_CHARS, MIN_BARS)
+from parable.lab.templates import list_templates
+from parable.models import NewListing
 from parable.paypal import is_mock
 
 router = APIRouter()
-
-PRICE_POINTS = 120
-
-
-class PurchaseRequest(BaseModel):
-    listing_id: str
-    via: str = "web"
-
-
-class ApproveRequest(BaseModel):
-    order_id: str
 
 
 class ShopperRequest(BaseModel):
@@ -26,8 +19,31 @@ class ShopperRequest(BaseModel):
     budget_cents: int | None = Field(default=None, ge=0)
 
 
-def dollars(price: int) -> float:
-    return price / prices.PRICE_DECIMALS
+class BenchmarkAttach(BaseModel):
+    benchmark_id: str
+
+
+class RerunRequest(BaseModel):
+    refetch: bool = False
+
+
+class TestDriveRequest(BaseModel):
+    symbol: str | None = None
+    interval: str | None = None
+    start: float | None = None
+    end: float | None = None
+
+
+def limits() -> dict:
+    settings = get_settings()
+    return {
+        "max_formula_len": MAX_FORMULA_LEN, "max_params": MAX_PARAMS, "max_grid": MAX_GRID,
+        "max_spec_bytes": MAX_SPEC_BYTES, "max_steps_chars": MAX_STEPS_CHARS, "min_bars": MIN_BARS,
+        "max_bars": MAX_BARS, "upload_max_bytes": settings.upload_max_bytes,
+        "upload_max_rows": settings.upload_max_rows, "benchmark_max_models": settings.benchmark_max_models,
+        "max_agents": settings.max_agents_per_account, "max_versions": settings.max_versions_per_agent,
+        "max_datasets": settings.max_datasets_per_account,
+    }
 
 
 @router.get("/api/info")
@@ -40,10 +56,12 @@ def info():
         "currency": "USD",
         "platform_fee_bps": settings.platform_fee_bps,
         "price_source": settings.price_source,
-        "eth_price_usd": dollars(prices.price()),
-        "strategies": [{"id": key, "text": text} for key, text in PRESETS.items()],
-        "brains": [{"brain": name, "available": ready} for name, ready in bot_runner.available_brains().items()],
         "analyst": analyst.brain_name() if analyst.available() else "rules",
+        "kinds": list(ASSET_KINDS),
+        "intervals": list(INTERVALS),
+        "templates": list_templates(),
+        "limits": limits(),
+        "ai": {"free_tries_per_day": settings.ai_free_tries_per_day},
         "ledger_head": ledger.head(),
     }
 
@@ -53,44 +71,56 @@ def stats():
     return market.market_stats()
 
 
-def current_point() -> list:
-    stamp, value = prices.record_sample()
-    return [stamp, dollars(value)]
-
-
-@router.get("/api/prices")
-def price_points():
-    points = [[stamp, dollars(value)] for stamp, value in prices.history(PRICE_POINTS)]
-    return {"points": points or [current_point()]}
-
-
 @router.get("/api/listings")
-def listings():
-    return market.list_listings()
+def listings(kind: str | None = None, mode: str | None = None, sort: str = "new"):
+    return market.list_listings(kind, mode, sort)
 
 
 @router.get("/api/listings/{listing_id}")
 def listing(listing_id: str):
-    return {**market.get_listing(listing_id), "runs": [public_run(run) for run in market.listing_runs(listing_id)]}
+    return market.listing_detail(listing_id)
 
 
 @router.post("/api/listings")
-def create_listing(data: market.ListingInput, seller: dict = Depends(require_seller)):
-    return market.create_listing(seller["id"], data)
+def create_listing(data: NewListing, seller: dict = Depends(require_seller)):
+    created = market.create_listing(seller["id"], data)
+    return market.listing_detail(created["id"])
 
 
 @router.post("/api/listings/{listing_id}/pause")
 def pause_listing(listing_id: str, seller: dict = Depends(require_seller)):
-    return market.pause_listing(seller["id"], listing_id)
+    market.pause_listing(seller["id"], listing_id)
+    return market.listing_detail(listing_id)
 
 
-@router.post("/api/listings/{listing_id}/practice")
-def practice(listing_id: str, seller: dict = Depends(require_seller)):
-    return public_run(market.start_practice(seller["id"], listing_id))
+@router.post("/api/listings/{listing_id}/resume")
+def resume_listing(listing_id: str, seller: dict = Depends(require_seller)):
+    market.resume_listing(seller["id"], listing_id)
+    return market.listing_detail(listing_id)
+
+
+@router.post("/api/listings/{listing_id}/benchmark")
+def attach_benchmark(listing_id: str, body: BenchmarkAttach, seller: dict = Depends(require_seller)):
+    market.attach_benchmark(seller["id"], listing_id, body.benchmark_id)
+    return market.listing_detail(listing_id)
+
+
+@router.post("/api/listings/{listing_id}/rerun")
+def rerun(listing_id: str, request: Request, response: Response, body: RerunRequest | None = None):
+    visitor = quota.visitor_id(request, response)
+    return proofs.rerun_listing(listing_id, visitor, bool(body and body.refetch))
+
+
+@router.post("/api/listings/{listing_id}/test-drive")
+def test_drive(listing_id: str, request: Request, response: Response, body: TestDriveRequest | None = None):
+    visitor = quota.visitor_id(request, response)
+    options = body.model_dump() if body else {}
+    return proofs.test_drive(listing_id, visitor, **options)
 
 
 @router.get("/api/listings/{listing_id}/diligence")
 def listing_diligence(listing_id: str):
+    market.listing_summary(listing_id)
     return diligence.report(listing_id)
 
 
@@ -101,24 +131,3 @@ def shop(request: ShopperRequest):
     return {**answer, "listing": found.get(answer["listing_id"]),
             "alternative_listings": [found[key] for key in answer["alternatives"] if key in found]}
 
-
-@router.post("/api/purchases")
-def new_purchase(request: PurchaseRequest):
-    return market.start_purchase(request.listing_id, request.via)
-
-
-@router.post("/api/purchases/{purchase_id}/approve")
-def approve(purchase_id: str, request: ApproveRequest, x_buyer_token: str | None = Header(default=None)):
-    market.confirm_approval(purchase_id, request.order_id)
-    return market.get_purchase(purchase_id, x_buyer_token)
-
-
-@router.get("/api/purchases/{purchase_id}")
-def purchase(purchase_id: str, x_buyer_token: str | None = Header(default=None)):
-    return market.get_purchase(purchase_id, x_buyer_token)
-
-
-@router.post("/api/purchases/{purchase_id}/retry")
-def retry(purchase_id: str, x_buyer_token: str | None = Header(default=None)):
-    market.retry_settlement(purchase_id)
-    return market.get_purchase(purchase_id, x_buyer_token)

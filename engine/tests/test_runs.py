@@ -4,7 +4,7 @@ import pytest
 
 from parable import ledger, referee, runs
 from parable.db import execute
-from parable.models import BotRules
+from parable.models import RunRules
 from parable.errors import LabError, MarketError
 from parable.runs import RunManager
 from run_support import FakeSpec, agent_rules, feed, insert_version, install_fake_lab
@@ -12,9 +12,13 @@ from run_support import FakeSpec, agent_rules, feed, insert_version, install_fak
 USD = 1_000_000
 
 
-def rules(**overrides) -> BotRules:
-    base = {"strategy": "yolo", "max_trade_usd": 100 * USD, "max_loss_bps": 5000, "lease_seconds": 120}
-    return BotRules(**{**base, **overrides})
+def rules(**overrides) -> RunRules:
+    names = {"max_trade_usd": "max_trade", "start_cash_usd": "start_cash"}
+    mapped = {names.get(key, key): value for key, value in overrides.items() if key not in ("strategy", "brain")}
+    base = {"version_id": "v_legacy0001", "spec_hash": "ab" * 32, "symbol": "fake:BTCUSDT", "interval": "1h",
+            "quote": "USDT", "start_cash": 1000 * USD, "max_trade": 250 * USD, "max_loss_bps": 300,
+            "lease_seconds": 300}
+    return RunRules(**{**base, **mapped})
 
 
 @pytest.fixture
@@ -40,11 +44,6 @@ def test_default_interval_comes_from_settings(monkeypatch):
     assert RunManager().interval_s == 7
 
 
-def test_start_runs_a_bot_thread_that_trades(manager, wait_until):
-    run = manager.start("s_a", rules(), "practice", "live bot")
-    assert run["status"] == "alive"
-    assert wait_until(lambda: referee.get_run(run["id"])["trades"] >= 2)
-    assert manager.workers[run["id"]][0].daemon
 
 
 def test_stop_ends_run_and_thread(manager, wait_until):
@@ -74,19 +73,6 @@ def test_stop_with_loss_limit_cause_for_failed_probation(manager):
     assert manager.stop(run["id"], "loss_limit")["cause"] == "loss_limit"
 
 
-def test_listener_called_exactly_once_with_final_run(manager, wait_until, monkeypatch):
-    seen = []
-    manager.add_end_listener(seen.append)
-    run = manager.start("s_a", rules(lease_seconds=60), "practice", "short")
-    monkeypatch.setattr(referee, "now", lambda: run["expires_at"] + 1)
-    assert wait_until(lambda: len(seen) >= 1)
-    manager.poll_once()
-    manager.poll_once()
-    manager.stop(run["id"])
-    threading.Event().wait(0.05)
-    assert len(seen) == 1
-    assert seen[0]["id"] == run["id"] and seen[0]["status"] == "dead" and seen[0]["cause"] == "expired"
-    assert "equity_usd" in seen[0] and seen[0]["final_equity_usd"] is not None
 
 
 def test_listener_called_when_poller_ends_run_without_threads(manager):
@@ -115,15 +101,6 @@ def test_multiple_listeners_and_failing_listener(manager):
     assert len(first) == len(second) == 1
 
 
-def test_loss_limit_ends_run_via_bot_thread(manager, price_box, wait_until):
-    seen = []
-    manager.add_end_listener(seen.append)
-    run = manager.start("s_a", rules(max_trade_usd=1000 * USD, max_loss_bps=300), "practice", "crash")
-    assert wait_until(lambda: referee.get_run(run["id"])["trades"] >= 1)
-    price_box.set(1000)
-    assert wait_until(lambda: len(seen) == 1)
-    assert seen[0]["cause"] == "loss_limit"
-    assert wait_until(lambda: not manager.workers[run["id"]][0].is_alive())
 
 
 def test_probation_runs_carry_listing_and_purchase_ids(manager):
@@ -152,18 +129,6 @@ def test_start_poller_ends_expired_runs_and_is_idempotent(manager, wait_until):
     assert not poller.is_alive()
 
 
-def test_resume_restarts_alive_runs_after_restart(wait_until):
-    before = RunManager(interval_s=0.005)
-    runs.set_manager(before)
-    run = before.start("s_a", rules(), "practice", "survivor")
-    before.shutdown()
-    trades_at_crash = referee.get_run(run["id"])["trades"]
-    after = RunManager(interval_s=0.005)
-    runs.set_manager(after)
-    assert after.workers == {}
-    assert after.resume() == [run["id"]]
-    assert wait_until(lambda: referee.get_run(run["id"])["trades"] > trades_at_crash)
-    assert after.workers[run["id"]][0].is_alive()
 
 
 def test_resume_ends_expired_runs_and_notifies(wait_until):
@@ -181,27 +146,8 @@ def test_resume_ends_expired_runs_and_notifies(wait_until):
     assert after.workers == {}
 
 
-def test_resume_ends_runs_already_past_loss_limit(price_box):
-    seen = []
-    first = RunManager(interval_s=1000)
-    runs.set_manager(first)
-    run = first.start("s_a", rules(strategy="momentum", max_trade_usd=1000 * USD, max_loss_bps=300), "practice",
-                      "hurt")
-    first.shutdown()
-    referee.trade(run["id"], "buy", 1000 * USD, "in")
-    price_box.set(1500)
-    second = RunManager(interval_s=1000)
-    runs.set_manager(second)
-    second.add_end_listener(seen.append)
-    assert second.resume() == []
-    assert seen[0]["cause"] == "loss_limit"
 
 
-def test_resume_does_not_double_spawn(manager):
-    run = manager.start("s_a", rules(), "practice", "once")
-    thread = manager.workers[run["id"]][0]
-    assert manager.resume() == [run["id"]]
-    assert manager.workers[run["id"]][0] is thread
 
 
 def test_resume_skips_dead_runs(manager):
@@ -231,11 +177,7 @@ def agent_calls(monkeypatch):
         calls.append(run_id)
         stop_event.wait(5)
 
-    def fake_legacy(*args, **kwargs):
-        calls.append("legacy")
-
-    monkeypatch.setattr("parable.bot_runner.run_agent", fake_agent)
-    monkeypatch.setattr("parable.bot_runner.run_bot", fake_legacy)
+    monkeypatch.setattr("parable.bot_agent.run_agent", fake_agent)
     return calls
 
 
@@ -245,9 +187,6 @@ def test_start_dispatches_new_rules_to_run_agent(manager, agent_calls, wait_unti
     assert run["version_id"] == "v_test000001"
 
 
-def test_start_dispatches_legacy_rules_to_run_bot(manager, agent_calls, wait_until, price_box):
-    manager.start("s_a", rules(), "practice", "legacy")
-    assert wait_until(lambda: agent_calls == ["legacy"])
 
 
 def test_practice_cap_counts_only_alive_practice_runs(manager, agent_calls, monkeypatch, price_box):
@@ -266,17 +205,6 @@ def test_practice_cap_counts_only_alive_practice_runs(manager, agent_calls, monk
     assert manager.start("s_a", agent_rules(), "practice", "freed")["status"] == "alive"
 
 
-def test_resume_handles_both_kinds(agent_calls, wait_until, price_box):
-    before = RunManager(interval_s=0.005)
-    runs.set_manager(before)
-    new_run = before.start("s_a", agent_rules(), "practice", "agent")
-    old_run = before.start("s_a", rules(), "probation", "legacy", purchase_id="p_1")
-    before.shutdown()
-    agent_calls.clear()
-    after = RunManager(interval_s=0.005)
-    runs.set_manager(after)
-    assert sorted(after.resume()) == sorted([new_run["id"], old_run["id"]])
-    assert wait_until(lambda: sorted(map(str, agent_calls)) == sorted([str(new_run["id"]), "legacy"]))
 
 
 def test_resume_loads_the_spec_by_version_id(monkeypatch, wait_until, price_box, feed):

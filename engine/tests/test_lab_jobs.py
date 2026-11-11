@@ -104,3 +104,23 @@ def test_finished_jobs_are_kept_one_hour(wait_until):
         import time
 
         jobs.clock = time.time
+
+
+def test_partial_results_are_visible_while_running(wait_until):
+    import threading
+
+    gate = threading.Event()
+
+    def work(progress):
+        progress(0.5, "half", {"rows": [1]})
+        progress(None, None, {"rows": [1, 2]})
+        gate.wait(5)
+        return {"rows": [1, 2, 3]}
+
+    job_id = jobs.start("k", "s_a", work)
+    assert wait_until(lambda: jobs.get(job_id, "s_a")["result"] == {"rows": [1, 2]})
+    live = jobs.get(job_id, "s_a")
+    assert live["status"] == "running" and live["progress"] == 0.5 and live["message"] == "half"
+    gate.set()
+    wait_for(job_id, "s_a", ("done",), wait_until)
+    assert jobs.get(job_id, "s_a")["result"] == {"rows": [1, 2, 3]}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { fetchInfo, fetchMe, logout, type Listing, type PublicListing } from './api';
+import { fetchInfo, fetchMe, logout, type PublicListing } from './api';
 import './build.css';
 import { useTheme } from './hooks/useTheme';
 import { usePoll } from './hooks/usePoll';
@@ -14,6 +14,7 @@ import { MinePage } from './sections/MinePage';
 import { PurchasePage } from './sections/Purchase';
 import { Purchases } from './sections/Purchases';
 import { ModeBanner, Topbar } from './sections/Topbar';
+import { takeReturn } from './signIn';
 
 export default function App() {
   const route = useRoute();
@@ -23,6 +24,11 @@ export default function App() {
   const [buying, setBuying] = useState<PublicListing | null>(null);
 
   useEffect(() => { window.scrollTo(0, 0); }, [route.page, route.id]);
+  useEffect(() => {
+    if (!me.data?.seller) return;
+    const back = takeReturn();
+    if (back && back !== window.location.hash) window.location.hash = back;
+  }, [me.data?.seller?.id]);
 
   async function signOut() {
     await logout();
@@ -42,6 +48,6 @@ export default function App() {
       {route.page === 'ledger' && <Ledger/>}
     </main>
     <Footer/>
-    {buying && info.data && <Checkout listing={buying as unknown as Listing} info={info.data} onClose={() => setBuying(null)}/>}
+    {buying && info.data && <Checkout listing={buying} info={info.data} me={me.data} onClose={() => setBuying(null)}/>}
   </>;
 }

@@ -3,9 +3,11 @@ import time
 import pytest
 from fastapi.testclient import TestClient
 
-from market_support import install_manager
-from parable import api, db, market, prices, referee, runs
+from market_support import install_manager, purchase_row
+from parable import api, db, diligence, listings, prices, referee, runs
 from parable.config import get_settings
+from parable.paypal import set_paypal
+from parable.lab import datasets, jobs, markets, quota
 
 BLANK_KEYS = (
     "ANTHROPIC_API_KEY", "AUTOLOOPS_API_KEY", "GEMINI_API_KEY", "PAYPAL_CLIENT_ID", "PAYPAL_CLIENT_SECRET",
@@ -17,8 +19,8 @@ def clear_engine_state() -> None:
     runs.set_manager(None)
     runs.shutdown_all()
     referee.clear_end_hooks()
-    prices.stop_sampler()
     prices.set_price_source(None)
+    set_paypal(None)
 
 
 @pytest.fixture(autouse=True)
@@ -31,8 +33,17 @@ def isolated_engine(monkeypatch):
     get_settings.cache_clear()
     clear_engine_state()
     db.reset_db(":memory:")
+    markets.reset_providers(offline=True)
+    markets.clear_cache()
+    jobs.clear()
+    quota.limiter.clear()
+    datasets.clear_drafts()
+    diligence.clear_cache()
+    listings.reset_throttle()
     yield
     clear_engine_state()
+    markets.set_clock(None)
+    markets.reset_providers(offline=True)
     get_settings.cache_clear()
 
 
@@ -75,8 +86,8 @@ def manager():
 @pytest.fixture
 def settled(wait_until):
     def wait(purchase_id: str, statuses: tuple[str, ...]) -> dict:
-        assert wait_until(lambda: market.get_purchase(purchase_id)["status"] in statuses)
-        return market.get_purchase(purchase_id)
+        assert wait_until(lambda: purchase_row(purchase_id)["status"] in statuses)
+        return purchase_row(purchase_id)
 
     return wait
 
@@ -87,9 +98,17 @@ def client(manager, tmp_path):
         yield running
 
 
+def sign_in(session: TestClient, name: str, email: str) -> TestClient:
+    signed_in = session.post("/paypal/mock-login", data={"name": name, "email": email}, follow_redirects=False)
+    assert signed_in.status_code == 302
+    return session
+
+
 @pytest.fixture
 def seller_client(client):
-    signed_in = client.post("/paypal/mock-login", data={"name": "Flow Seller", "email": "flow@example.com"},
-                            follow_redirects=False)
-    assert signed_in.status_code == 302
-    return client
+    return sign_in(client, "Flow Seller", "flow@example.com")
+
+
+@pytest.fixture
+def buyer_client(client):
+    return sign_in(TestClient(client.app), "Flow Buyer", "buyer@example.com")

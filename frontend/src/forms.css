@@ -17,11 +17,7 @@
 .select-option:last-child { border-bottom: 0; }
 .select-option.active, .select-option:hover { background: var(--ink); color: var(--paper); }
 
-.agent-form { display: grid; grid-template-columns: minmax(0, 1fr) 220px auto; gap: 16px; align-items: end; padding: 16px; }
-.agent-result { display: flex; flex-direction: column; gap: 12px; }
 
-.listing-form .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; padding: 20px 16px; }
-.listing-form .wide { grid-column: 1 / -1; }
 .form-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; padding: 16px; border-top: 1px solid var(--rule); }
 
 .scrim { position: fixed; inset: 0; z-index: 50; background: #0b0b0b99; display: grid; place-items: center; padding: 16px; overflow-y: auto; }
@@ -38,12 +34,9 @@
 .signin-box .actions { padding: 0 16px 20px; }
 
 @media (max-width: 900px) {
-  .agent-form { grid-template-columns: 1fr; align-items: stretch; }
   .field.narrow { max-width: none; }
-  .agent-form .btn { width: 100%; }
 }
 @media (max-width: 640px) {
-  .listing-form .form-grid { grid-template-columns: 1fr; }
   .select-trigger { min-width: 0; width: 100%; }
   .box-head .select-field { flex-direction: column; align-items: stretch; width: 100%; }
   .box-head .select-options { left: 0; }

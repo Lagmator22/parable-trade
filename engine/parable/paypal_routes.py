@@ -5,7 +5,8 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from parable import market
-from parable.errors import MarketError
+from parable.errors import LabError, MarketError
+from parable.identity import current_seller
 from parable.paypal import PayPalError, get_paypal, is_mock
 from parable.paypal_pages import approve_page, message_page
 
@@ -68,7 +69,11 @@ async def mock_approve_submit(request: Request):
     purchase_id = details["purchase_units"][0]["custom_id"]
     if form.get("decision") == "cancel":
         return go(f"/paypal/cancel?purchase={purchase_id}", 303)
-    get_paypal().approve(order_id)
+    payer = current_seller(request)
+    if payer:
+        get_paypal().approve(order_id, payer["email"], payer["paypal_payer_id"])
+    else:
+        get_paypal().approve(order_id)
     return go(f"/paypal/return?token={order_id}&purchase={purchase_id}", 303)
 
 
@@ -86,7 +91,7 @@ def paypal_return(token: str = "", purchase: str = ""):
         return go("/#purchases")
     try:
         market.confirm_approval(purchase_id, token)
-    except (PayPalError, MarketError) as problem:
+    except (PayPalError, MarketError, LabError) as problem:
         log.warning("approval for %s failed: %s", purchase_id, problem)
     return go(purchase_page(purchase_id))
 
@@ -98,6 +103,6 @@ def paypal_cancel(purchase: str = "", token: str = ""):
         return go("/#purchases")
     try:
         market.cancel_purchase(purchase_id)
-    except MarketError as problem:
+    except (MarketError, LabError) as problem:
         log.warning("cancel for %s failed: %s", purchase_id, problem)
     return go(purchase_page(purchase_id))

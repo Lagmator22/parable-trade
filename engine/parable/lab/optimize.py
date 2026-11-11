@@ -59,7 +59,8 @@ def _ranked(scored: list[tuple[dict, dict]]) -> list[int]:
     return sorted(range(len(scored)), key=key)
 
 
-def optimize(spec: StrategySpec, bars: list, *, top_k: int = 5, progress: Progress = None) -> dict:
+def optimize(spec: StrategySpec, bars: list, *, top_k: int = 5, progress: Progress = None,
+             partial: Callable[[dict], None] | None = None) -> dict:
     validate_spec(spec)
     train_n = math.floor(len(bars) * TRAIN_FRACTION)
     train, test = bars[:train_n], bars[train_n:]
@@ -72,6 +73,8 @@ def optimize(spec: StrategySpec, bars: list, *, top_k: int = 5, progress: Progre
         scored.append((params, quick_metrics(spec, train, params)))
         if done % 10 == 0:
             report(0.9 * done / len(combos), f"trained {done}/{len(combos)}")
+            if partial:
+                partial({"rows": [], "grid_size": size, "evaluated": done})
     order = _ranked(scored)[:max(1, top_k)]
     rows = []
     for rank, i in enumerate(order):
@@ -80,6 +83,8 @@ def optimize(spec: StrategySpec, bars: list, *, top_k: int = 5, progress: Progre
         rows.append({"params": params, "train": train_metrics, "test": test_metrics,
                      "overfit": _overfit(train_metrics, test_metrics)})
         report(0.9 + 0.1 * (rank + 1) / len(order), "testing")
+        if partial:
+            partial({"rows": list(rows), "grid_size": size, "evaluated": len(combos)})
     base = {"train": quick_metrics(spec, train), "test": quick_metrics(spec, test)}
     return {"rows": rows, "grid_size": size, "evaluated": len(combos), "train_bars": len(train),
             "test_bars": len(test), "base": base}

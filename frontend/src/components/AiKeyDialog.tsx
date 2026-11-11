@@ -20,9 +20,12 @@ export function AiKeyDialog({ onClose }: { onClose: () => void }) {
       const result = await fetchModels(form);
       const list = result.own.filter(m => m.available);
       setModels(list);
-      setBad(list.length === 0);
-      setStatus(list.length ? `Key works. ${list.length} models.` : 'No models found for this key.');
-      if (list.length && !list.some(m => m.model === form.model)) setForm(f => ({ ...f, model: list[0].model }));
+      const verdict = result.key_ok === undefined ? list.length > 0 : result.key_ok;
+      setBad(verdict === false || (verdict === true && list.length === 0));
+      setStatus(verdict === false ? 'The provider rejected this key.'
+        : verdict === null ? 'Could not check this key right now. Try again.'
+        : list.length ? `Key works. ${list.length} models.` : 'No models found for this key.');
+      if (verdict !== false && list.length && !list.some(m => m.model === form.model)) setForm(f => ({ ...f, model: list[0].model }));
     } catch (failure) {
       setBad(true);
       setStatus(failure instanceof Error ? failure.message : 'Test failed');

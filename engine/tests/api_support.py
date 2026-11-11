@@ -2,14 +2,6 @@ import re
 
 from fastapi.testclient import TestClient
 
-from market_support import USD
-
-LISTING_BODY = {
-    "title": "Flow Bot", "pitch": "Tested end to end.", "strategy": "yolo", "brain": "rule",
-    "max_trade_usd": 100 * USD, "max_loss_bps": 100, "price_cents": 2000, "probation_s": 120,
-    "min_return_bps": -50,
-}
-
 
 def order_from(approve_url: str) -> str:
     return re.search(r"order=([^&]+)", approve_url).group(1)

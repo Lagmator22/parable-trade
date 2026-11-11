@@ -225,11 +225,6 @@ def get_dataset(dataset_id: str, owner_id: str) -> dict:
     return view(row, True)
 
 
-def raw_dataset(dataset_id: str) -> dict | None:
-    row = db.one("SELECT * FROM datasets WHERE id = ?", (dataset_id,))
-    return view(row, True) if row else None
-
-
 def list_datasets(owner_id: str) -> list[dict]:
     return [view(r, False) for r in db.rows("SELECT * FROM datasets WHERE owner_id = ? ORDER BY created_at DESC, id", (owner_id,))]
 

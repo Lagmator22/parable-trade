@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { ago, bps, bpsShort, brainName, cents, countdown, duration, mask, promise, signedBps, strategyName, survivalPercent, usdMicro } from './format';
+import { builtBy, instantOnly, pct, ago, bps, bpsShort, brainName, cents, countdown, duration, mask, promise, signedBps, usdMicro } from './format';
 
 test('formats cents as dollars', () => {
   expect(cents(2500)).toBe('$25.00');
@@ -29,7 +29,6 @@ test('prettifies brain and strategy names', () => {
   expect(brainName('gemini:gemini-3.5-flash-lite')).toBe('Gemini 3.5 Flash Lite');
   expect(brainName('jev:gemma-4-31b-it')).toBe('Jev Gemma 4 31b it');
   expect(brainName('mystery')).toBe('Mystery');
-  expect(strategyName('dip_buyer')).toBe('Dip buyer');
 });
 
 test('formats durations and countdowns', () => {
@@ -55,8 +54,18 @@ test('small helpers', () => {
   expect(mask('PAYID-ABCDEFGHIJ')).toBe('…EFGHIJ');
   expect(mask('short')).toBe('short');
   expect(mask(null)).toBe('');
-  expect(survivalPercent(3, 4)).toBe(75);
-  expect(survivalPercent(0, 0)).toBeNull();
   expect(ago(1_000, 1_030_000)).toBe('30 s ago');
   expect(ago(1_000, 1_000_000 + 7_200_000)).toBe('2 h ago');
+});
+
+test('pct and builtBy', () => {
+  expect(pct(3.14159)).toBe('+3.1%');
+  expect(pct(-2, 2)).toBe('-2.00%');
+  expect(pct(null)).toBe('-');
+  expect(builtBy('template:dip')).toBe('Template');
+  expect(builtBy('')).toBe('Hand-made');
+  expect(builtBy('gemini:gemini-3.5-flash-lite')).toBe('Gemini 3.5 Flash Lite');
+  expect(instantOnly('upload:d_1')).toBe(true);
+  expect(instantOnly('sample:BTCUSDT')).toBe(true);
+  expect(instantOnly('binance:BTCUSDT')).toBe(false);
 });

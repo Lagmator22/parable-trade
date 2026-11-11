@@ -3,7 +3,7 @@ import time
 from datetime import UTC, datetime
 
 from parable.config import get_settings
-from parable.paypal_core import PayPalError, cents_to_value, money
+from parable.paypal_core import PayPalError, cents_to_value, money, require_intent
 
 AUTHORIZATION_HONOR_S = 29 * 24 * 3600
 ORPHAN_CAPACITY_CENTS = 10**12
@@ -40,6 +40,17 @@ class MockPayPal:
         self._order_by_request: dict[str, str] = {}
         self._authorizations: dict[str, dict] = {}
         self._payouts: dict[str, dict] = {}
+        self._failures: dict[str, list[str]] = {}
+
+    def fail_next(self, operation: str, name: str) -> None:
+        with self._lock:
+            self._failures.setdefault(operation, []).append(name)
+
+    def _maybe_fail(self, operation: str) -> None:
+        with self._lock:
+            queued = self._failures.get(operation)
+            if queued:
+                raise PayPalError(422, queued.pop(0), f"injected failure for {operation}")
 
     def _next_id(self, kind: str) -> str:
         self._counters[kind] = self._counters.get(kind, 0) + 1
@@ -52,8 +63,11 @@ class MockPayPal:
     def token(self) -> str:
         return "MOCK-ACCESS-TOKEN"
 
-    def create_order(self, amount_cents, description, custom_id, return_url, cancel_url) -> dict:
+    def create_order(self, amount_cents, description, custom_id, return_url, cancel_url,
+                     intent="AUTHORIZE") -> dict:
         require_positive(amount_cents)
+        require_intent(intent)
+        self._maybe_fail("create_order")
         with self._lock:
             known = self._order_by_request.get(custom_id)
             if known:
@@ -62,6 +76,7 @@ class MockPayPal:
             self._orders[order_id] = {
                 "id": order_id,
                 "status": "CREATED",
+                "intent": intent,
                 "amount_cents": amount_cents,
                 "custom_id": custom_id,
                 "description": description[:127],
@@ -101,11 +116,18 @@ class MockPayPal:
                 "description": order["description"],
                 "amount": money(order["amount_cents"]),
             }
-            return {"id": order["id"], "status": order["status"], "intent": "AUTHORIZE", "purchase_units": [unit]}
+            view = {"id": order["id"], "status": order["status"], "intent": order["intent"],
+                    "purchase_units": [unit]}
+            if order["status"] in ("APPROVED", "COMPLETED"):
+                view["payer"] = {"payer_id": order["payer_id"], "email": order["payer_email"]}
+            return view
 
     def authorize_order(self, order_id) -> dict:
+        self._maybe_fail("authorize_order")
         with self._lock:
             order = self._order(order_id)
+            if order["intent"] != "AUTHORIZE":
+                raise PayPalError(422, "ORDER_INTENT_MISMATCH", "order was created to capture, not authorize")
             if order["status"] == "COMPLETED":
                 raise PayPalError(422, "ORDER_ALREADY_AUTHORIZED", "order was already authorized")
             if order["status"] != "APPROVED":
@@ -116,6 +138,25 @@ class MockPayPal:
                 "authorization_id": authorization["id"],
                 "status": authorization["status"],
                 "expiration_time": authorization["expiration_time"],
+                "payer_email": order["payer_email"],
+                "payer_id": order["payer_id"],
+            }
+
+    def capture_order(self, order_id) -> dict:
+        self._maybe_fail("capture_order")
+        with self._lock:
+            order = self._order(order_id)
+            if order["intent"] != "CAPTURE":
+                raise PayPalError(422, "ORDER_INTENT_MISMATCH", "order was created to authorize, not capture")
+            if order["status"] == "COMPLETED":
+                raise PayPalError(422, "ORDER_ALREADY_CAPTURED", "order was already captured")
+            if order["status"] != "APPROVED":
+                raise PayPalError(422, "ORDER_NOT_APPROVED", "payer has not approved the order")
+            order["status"] = "COMPLETED"
+            return {
+                "capture_id": self._next_id("CAPTURE"),
+                "status": "COMPLETED",
+                "amount_cents": order["amount_cents"],
                 "payer_email": order["payer_email"],
                 "payer_id": order["payer_id"],
             }
@@ -156,6 +197,7 @@ class MockPayPal:
 
     def capture_authorization(self, auth_id, amount_cents, invoice_id, final=True) -> dict:
         require_positive(amount_cents)
+        self._maybe_fail("capture_authorization")
         with self._lock:
             authorization = self._authorization(auth_id)
             self._require_open(authorization)
@@ -166,6 +208,7 @@ class MockPayPal:
             return {"capture_id": self._next_id("CAPTURE"), "status": "COMPLETED"}
 
     def void_authorization(self, auth_id) -> dict:
+        self._maybe_fail("void_authorization")
         with self._lock:
             authorization = self._authorization(auth_id)
             if authorization["status"] == "VOIDED":
@@ -187,6 +230,7 @@ class MockPayPal:
 
     def create_payout(self, batch_id, receiver_email, amount_cents, note) -> dict:
         require_positive(amount_cents)
+        self._maybe_fail("create_payout")
         with self._lock:
             payout = self._payouts.get(batch_id)
             if payout is None:

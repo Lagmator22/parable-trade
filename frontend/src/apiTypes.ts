@@ -12,15 +12,6 @@ export type PurchaseStatus =
   | 'created' | 'authorized' | 'probation' | 'passed' | 'failed'
   | 'captured' | 'paid_out' | 'voided' | 'cancelled' | 'error';
 
-export type Rules = {
-  strategy: string;
-  brain: string;
-  start_cash_usd: number;
-  max_trade_usd: number;
-  max_loss_bps: number;
-  lease_seconds: number;
-};
-
 export type Param = { value: number; min: number; max: number; step: number };
 export type StrategySpec = {
   name: string; summary: string; symbol: string; interval: string; built_by: string;
@@ -62,7 +53,7 @@ export type OptimizeResult = { rows: OptimizeRow[]; grid_size: number; evaluated
 export type Job<T = unknown> = { id: string; kind: string; status: 'queued' | 'running' | 'done' | 'error'; progress: number; message: string; result: T | null; error: string | null; created_at: number };
 export type FreeTries = { limit: number; used: number; remaining: number };
 export type ModelInfo = { id: string; provider: string; model: string; label: string; available: boolean; free: boolean };
-export type Models = { platform: ModelInfo[]; own: ModelInfo[]; free_tries: FreeTries };
+export type Models = { platform: ModelInfo[]; own: ModelInfo[]; free_tries: FreeTries; key_ok?: boolean | null };
 export type Question = { id: string; text: string; options: { id: string; label: string }[] };
 export type CompileRequest = { steps?: string; symbol: string; interval: string; model?: string; answers?: Record<string, string>; base?: StrategySpec };
 export type CompileResponse = { spec: StrategySpec; summary: string; rules: RuleChip[]; built_by: string; attempts: number; free_tries: FreeTries };
@@ -102,18 +93,18 @@ export type RunPoints = { run_id: number; quote: string; start_cash: number; poi
 export type Run = {
   id: number; seller_id: string; listing_id: string | null; purchase_id: string | null; purpose: RunPurpose; name: string;
   status: 'alive' | 'dead'; cause: RunCause | null; spec_hash?: string | null; symbol?: string | null;
-  interval?: string | null; quote?: string | null; units?: number; fingerprint: string;
+  interval?: string | null; quote?: string | null; units?: number;
   start_cash_usd: number; peak_equity_usd: number; final_equity_usd: number | null; equity_usd: number;
   pnl_bps: number; drawdown_bps: number; started_at: number; expires_at: number; ended_at: number | null;
-  trades: number; refusals: number; seconds_left: number; lifetime_s?: number; rules: Rules;
+  trades: number; refusals: number; seconds_left: number; lifetime_s?: number;
 };
 
 export type LedgerEntry = { seq: number; at: number; kind: string; subject: string; data: Record<string, unknown>; prev_hash: string; hash: string };
 export type Verdict = { passed: boolean; cause: RunCause | string; return_bps: number; min_return_bps: number; lifetime_s: number; trades: number; refusals: number; explanation: string };
 
 export type License = {
-  key: string; format?: 'parable-agent'; engine_version?: string; spec_hash?: string; spec?: StrategySpec;
-  steps_text?: string; proof_id?: string; run_hint?: string; bot: Rules; fingerprint: string; instructions: string;
+  key: string; format: 'parable-agent'; engine_version: string; spec_hash: string; spec: StrategySpec;
+  steps_text: string; proof_id: string; run_hint: string;
 };
 export type PurchaseView = {
   id: string; status: PurchaseStatus; mode: SaleMode; listing: PublicListing; amount_cents: number; fee_cents: number;
@@ -131,7 +122,6 @@ export type Limits = Record<string, number>;
 export type InfoV2 = { kinds?: AssetKind[]; intervals?: string[]; templates?: Template[]; limits?: Limits; ai?: { free_tries_per_day: number } };
 export type Info = InfoV2 & {
   paypal_mode: PaypalMode; paypal_client_id: string; currency: string; platform_fee_bps: number; price_source: string;
-  eth_price_usd: number; strategies: { id: string; text: string }[]; brains: { brain: string; available: boolean }[];
   analyst: string; ledger_head: { seq: number; hash: string };
 };
 export type Stats = {
@@ -140,16 +130,10 @@ export type Stats = {
   ledger_head: { seq: number; hash: string } | string; agents?: number; proofs?: number; reruns?: number;
 };
 
-export type Listing = {
-  id: string; title: string; pitch: string; seller: { id?: string; name: string; verified: boolean }; seller_id?: string;
-  rules: Rules; fingerprint: string; price_cents: number; probation_s: number; min_return_bps: number;
-  active: boolean | number; created_at: number; seller_record: SellerRecord; stats: ListingStats;
-};
 export type Diligence = { risk: RiskLevel; headline: string; findings: string[]; red_flags: string[]; facts: Record<string, unknown>; by: string };
-export type Recommendation = { listing_id: string | null; reason: string; alternatives: string[]; by: string; listing?: Listing };
-export type NewPurchase = { purchase_id: string; buyer_token: string; paypal_order_id: string; approve_url: string };
+export type Recommendation = { listing_id: string | null; reason: string; alternatives: string[]; by: string };
+export type NewPurchase = { purchase_id: string; paypal_order_id: string; approve_url: string };
 export type VerifyResult = { ok: boolean; checked: number; first_bad_seq: number | null; head: string };
 export type TamperResult = { edited_seq: number; before: unknown; after: unknown; verify: VerifyResult };
 export type Webhook = { event_type: string; verified: boolean | number; resource_id: string; received_at: number };
-export type SellerProfile = { seller?: { id: string; name: string; verified: boolean }; id?: string; name?: string; verified?: boolean; record: SellerRecord; runs: Run[]; listings?: Listing[] };
-export type ListingPayload = { title: string; pitch: string; strategy: string; brain: string; max_trade_usd: number; max_loss_bps: number; price_cents: number; probation_s: number; min_return_bps: number };
+export type SellerProfile = { seller?: { id: string; name: string; verified: boolean }; id?: string; name?: string; verified?: boolean; record: SellerRecord; runs: Run[]; listings?: PublicListing[] };

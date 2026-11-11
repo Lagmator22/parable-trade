@@ -4,6 +4,7 @@ import App from './App';
 import './style.css';
 import './forms.css';
 import './market.css';
+import './agent.css';
 import './purchase.css';
 import './ledger.css';
 import './sell.css';

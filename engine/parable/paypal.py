@@ -13,7 +13,9 @@ from parable.paypal_core import (
     first_authorization,
     money,
     parse_userinfo,
+    parse_capture,
     payer_identity,
+    require_intent,
     unexpected_response,
     value_to_cents,
 )
@@ -119,9 +121,11 @@ class PayPalClient:
             self._forget_token()
             return self._call_once(*arguments)
 
-    def create_order(self, amount_cents, description, custom_id, return_url, cancel_url) -> dict:
+    def create_order(self, amount_cents, description, custom_id, return_url, cancel_url,
+                     intent="AUTHORIZE") -> dict:
+        require_intent(intent)
         body = {
-            "intent": "AUTHORIZE",
+            "intent": intent,
             "purchase_units": [
                 {
                     "reference_id": custom_id,
@@ -175,6 +179,16 @@ class PayPalClient:
             "payer_email": email,
             "payer_id": payer_id,
         }
+
+    def capture_order(self, order_id) -> dict:
+        order = self._call(
+            "POST",
+            f"/v2/checkout/orders/{segment(order_id)}/capture",
+            json={},
+            request_id=f"{order_id}:capture",
+            representation=True,
+        )
+        return parse_capture(order)
 
     def capture_authorization(self, auth_id, amount_cents, invoice_id, final=True) -> dict:
         body = {"amount": money(amount_cents), "invoice_id": invoice_id, "final_capture": final}

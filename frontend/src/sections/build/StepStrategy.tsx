@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react';
-import { ApiError, compileSteps, fetchModels, fetchQuestions, type CompileRequest, type FreeTries, type Info, type ModelInfo, type Question, type Template } from '../../api';
+import { ApiError, compileSteps, fetchModels, fetchQuestions, fetchTemplate, type CompileRequest, type FreeTries, type Info, type ModelInfo, type Question, type Template } from '../../api';
 import { hasOwnKey, loadAiSettings } from '../../aiSettings';
 import { Button } from '../../components/ui/Button';
 import { FormulaEditor } from './FormulaEditor';
 import type { Build } from './useBuild';
-
-const ANSWER_DEFAULT: Record<string, string> = { speed: 'medium', risk: 'normal', size: 'full' };
 
 export function StepStrategy({ build, info }: { build: Build; info: Info | null }) {
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -29,10 +27,6 @@ export function StepStrategy({ build, info }: { build: Build; info: Info | null 
     }).catch(() => setModels([]));
   }, []);
 
-  function pick(q: Question, wanted: string) {
-    return q.options.find(o => o.id === wanted)?.id ?? q.options[Math.min(1, q.options.length - 1)]?.id ?? wanted;
-  }
-
   async function run(label: string, req: Omit<CompileRequest, 'symbol' | 'interval'>) {
     if (!market) { setError('Pick a market first.'); return; }
     setBusy(label);
@@ -47,11 +41,16 @@ export function StepStrategy({ build, info }: { build: Build; info: Info | null 
     setBusy('');
   }
 
-  function template(t: Template) {
-    const fam = questions.find(q => q.id === 'family');
-    const chosen: Record<string, string> = { family: fam?.options.find(o => o.id === t.id)?.id ?? t.id };
-    for (const q of questions) if (q.id !== 'family') chosen[q.id] = pick(q, ANSWER_DEFAULT[q.id] ?? '');
-    return run(`t:${t.id}`, { answers: chosen });
+  async function template(t: Template) {
+    if (!market) { setError('Pick a market first.'); return; }
+    setBusy(`t:${t.id}`);
+    setError('');
+    try {
+      build.applyCompile(await fetchTemplate(t.id, market.symbol, build.interval));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load the template');
+    }
+    setBusy('');
   }
 
   const ready = questions.length > 0 && questions.every(q => answers[q.id]);

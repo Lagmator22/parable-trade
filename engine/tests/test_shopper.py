@@ -1,41 +1,41 @@
 import pytest
 
-from market_support import make_listing, make_seller
-from parable import analyst, referee, shopper
-from parable.models import BotRules
-
-
-def record_runs(seller: dict, listing: dict, survived: int, died: int) -> None:
-    rules = BotRules.model_validate(listing["rules"])
-    for index in range(survived + died):
-        run = referee.open_run(seller["id"], rules, "practice", "p", listing_id=listing["id"])
-        referee.stop(run["id"], "expired" if index < survived else "loss_limit")
+from market_support import make_listing, make_seller, set_headline
+from parable import analyst, shopper
 
 
 @pytest.fixture
-def market_of_three(price_box):
+def market_of_three():
     proven, shaky, newcomer = make_seller("Proven", "p@example.com"), make_seller("Shaky", "s@example.com"), make_seller("New", "n@example.com")
     listings = {
-        "proven": make_listing(proven, title="Proven Bot", price_cents=3000, max_loss_bps=200),
-        "shaky": make_listing(shaky, title="Shaky Bot", price_cents=1000, max_loss_bps=800),
-        "new": make_listing(newcomer, title="New Bot", price_cents=500, max_loss_bps=300),
+        "proven": make_listing(proven, title="Proven Agent", price_cents=3000),
+        "shaky": make_listing(shaky, title="Shaky Agent", price_cents=1000),
+        "new": make_listing(newcomer, title="New Agent", price_cents=500),
     }
-    record_runs(proven, listings["proven"], 5, 0)
-    record_runs(shaky, listings["shaky"], 1, 4)
+    set_headline(listings["proven"], total_return_pct=40.0, benchmark_return_pct=10.0, max_drawdown_pct=10.0)
+    set_headline(listings["shaky"], total_return_pct=5.0, benchmark_return_pct=10.0, max_drawdown_pct=35.0)
+    set_headline(listings["new"], total_return_pct=20.0, benchmark_return_pct=10.0, max_drawdown_pct=12.0)
     return listings
 
 
-def test_fallback_prefers_the_best_survival_record(market_of_three):
-    answer = shopper.recommend("something that survives")
+def test_fallback_prefers_the_best_excess_return(market_of_three):
+    answer = shopper.recommend("something that beats the market")
     assert answer["listing_id"] == market_of_three["proven"]["id"] and answer["by"] == "rules"
-    assert "5 of 5 runs survived" in answer["reason"]
+    assert "+40.0%" in answer["reason"] and "buy and hold" in answer["reason"]
     assert set(answer["alternatives"]) <= {market_of_three["shaky"]["id"], market_of_three["new"]["id"]}
     assert market_of_three["proven"]["id"] not in answer["alternatives"]
 
 
+def test_matched_reruns_lift_the_ranking(market_of_three):
+    from parable import proofs
+
+    for _ in range(20):
+        proofs.rerun_listing(market_of_three["new"]["id"], "v_abcdef0123456789")
+    assert shopper.recommend("anything")["listing_id"] == market_of_three["new"]["id"]
+
+
 def test_budget_filters_candidates(market_of_three):
     answer = shopper.recommend("anything", budget_cents=1500)
-    assert answer["listing_id"] != market_of_three["proven"]["id"]
     assert answer["listing_id"] in (market_of_three["shaky"]["id"], market_of_three["new"]["id"])
 
 
@@ -45,16 +45,22 @@ def test_nothing_affordable_returns_no_listing(market_of_three):
 
 
 def test_empty_market_returns_no_listing():
-    assert shopper.recommend("a bot")["listing_id"] is None
+    assert shopper.recommend("an agent")["listing_id"] is None
 
 
-def test_cautious_wording_prefers_a_tighter_loss_limit(price_box):
-    one, two = make_seller("One", "1@example.com"), make_seller("Two", "2@example.com")
-    loose = make_listing(one, title="Loose", max_loss_bps=1000)
-    tight = make_listing(two, title="Tight", max_loss_bps=100)
-    for owner, listing in ((one, loose), (two, tight)):
-        record_runs(owner, listing, 4, 0)
-    assert shopper.recommend("a low-risk bot")["listing_id"] == tight["id"]
+def test_cautious_wording_weights_drawdown(market_of_three):
+    set_headline(market_of_three["proven"], max_drawdown_pct=45.0)
+    assert shopper.recommend("the best")["listing_id"] == market_of_three["proven"]["id"]
+    assert shopper.recommend("a low-risk agent")["listing_id"] == market_of_three["new"]["id"]
+
+
+def test_compact_facts_for_the_ai_hold_no_spec(market_of_three):
+    from parable.listing_views import list_listings
+
+    compact = shopper.compact(list_listings()[0])
+    assert set(compact) >= {"asset", "kind", "data_badge", "mode", "price_dollars", "proof_return_percent",
+                            "reruns_matched", "live_track_percent"}
+    assert "entry" not in str(compact) and compact["data_badge"] == "market data"
 
 
 def test_valid_ai_pick_is_used(market_of_three, monkeypatch):

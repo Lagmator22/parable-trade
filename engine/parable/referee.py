@@ -1,13 +1,12 @@
 import json
 import logging
 import time
-from typing import Callable, Literal
+from typing import Literal
 
 from parable import ledger, prices
 from parable.db import DB_LOCK, execute, one, rows
-from parable.models import BotRules, RunRules, fingerprint
+from parable.models import RunRules
 from parable.referee_hooks import _end_hooks, add_end_hook, announce_ended, clear_end_hooks, remove_end_hook
-from parable.referee_legacy import eth_value, fill_locked, refuse, validate_order, wei_for
 from parable.referee_math import (BPS, SIDES, RefereeError, Refusal, check_order, drawdown_bps, holdings_value,
                                   plan_fill, return_bps)
 from parable.referee_orders import apply_fill, refuse_order
@@ -38,9 +37,7 @@ def load(run_id: int) -> dict:
 def equity_at(run: dict, price: int) -> int:
     if run["status"] != "alive":
         return run["final_equity_usd"]
-    if run.get("version_id"):
-        return run["cash_usd"] + holdings_value(run["units"], price)
-    return run["cash_usd"] + eth_value(run["eth_wei"], price)
+    return run["cash_usd"] + holdings_value(run["units"], price)
 
 
 def view_price(run: dict) -> int:
@@ -54,8 +51,6 @@ def view_price(run: dict) -> int:
 
 
 def mark_price(run: dict) -> int:
-    if not run.get("version_id"):
-        return prices.price()
     try:
         return prices.price_for(run["symbol"])
     except Exception:
@@ -68,29 +63,11 @@ def loss_limit_hit(run: dict, equity: int) -> bool:
     return (peak - equity) * BPS >= max_loss_bps * peak
 
 
-def open_run(seller_id: str, rules: BotRules | RunRules, purpose: str, name: str, listing_id: str | None = None,
+def open_run(seller_id: str, rules: RunRules, purpose: str, name: str, listing_id: str | None = None,
              purchase_id: str | None = None) -> dict:
     if purpose not in PURPOSES:
         raise ValueError(f"purpose must be one of {PURPOSES}")
-    if isinstance(rules, RunRules):
-        return open_agent_run(seller_id, rules, purpose, name, listing_id, purchase_id)
-    started = now()
-    code = fingerprint(rules)
-    with DB_LOCK:
-        run_id = execute(
-            "INSERT INTO runs (seller_id, listing_id, purchase_id, purpose, name, rules_json, fingerprint, status,"
-            " cash_usd, eth_wei, start_cash_usd, peak_equity_usd, started_at, expires_at)"
-            " VALUES (?,?,?,?,?,?,?,'alive',?,0,?,?,?,?)",
-            (seller_id, listing_id, purchase_id, purpose, name, rules.model_dump_json(), code,
-             rules.start_cash_usd, rules.start_cash_usd, rules.start_cash_usd, started,
-             started + rules.lease_seconds),
-        )
-        ledger.append("run.started", f"run:{run_id}", {
-            "seller_id": seller_id, "listing_id": listing_id, "purchase_id": purchase_id, "purpose": purpose,
-            "name": name, "rules": rules.model_dump(), "fingerprint": code,
-            "start_cash_usd": rules.start_cash_usd, "expires_at": started + rules.lease_seconds,
-        })
-    return get_run(run_id)
+    return open_agent_run(seller_id, rules, purpose, name, listing_id, purchase_id)
 
 
 def open_agent_run(seller_id: str, rules: RunRules, purpose: str, name: str, listing_id: str | None,
@@ -167,30 +144,6 @@ def stop(run_id: int, cause: str = "stopped") -> dict:
     return get_run(run_id)
 
 
-def trade_locked(run_id: int, side: str, amount_usd: int, reason: str, price: int, ended: list[dict]) -> dict:
-    run = load(run_id)
-    if run["status"] != "alive":
-        raise RefereeError("NotAlive", f"run {run_id} is {run['cause']}")
-    closed = check_locked(run_id, price)
-    if closed is not None:
-        ended.append(closed)
-        raise RefereeError("Expired" if closed["cause"] == "expired" else "NotAlive", closed["cause"])
-    rules = json.loads(run["rules_json"])
-    reason = (reason or "")[:REASON_LIMIT]
-    amount = validate_order(run, rules, side, amount_usd, price, reason)
-    return fill_locked(load(run_id), side, amount, price, reason)
-
-
-def trade(run_id: int, side: str, amount_usd: int, reason: str) -> dict:
-    price = prices.price()
-    ended: list[dict] = []
-    try:
-        with DB_LOCK:
-            return trade_locked(run_id, side, amount_usd, reason, price, ended)
-    finally:
-        announce_ended(ended)
-
-
 def equity(run_id: int) -> int:
     run = load(run_id)
     return equity_at(run, mark_price(run))
@@ -200,7 +153,7 @@ def view(run: dict, price: int) -> dict:
     current = equity_at(run, price)
     alive = run["status"] == "alive"
     end = run["ended_at"] if run["ended_at"] else now()
-    base = {k: v for k, v in run.items() if k != "rules_json"} if run.get("version_id") else run
+    base = {k: v for k, v in run.items() if k != "rules_json"}
     return {
         **base,
         "rules": json.loads(run["rules_json"]),
@@ -212,12 +165,9 @@ def view(run: dict, price: int) -> dict:
     }
 
 
-def view_for(run: dict, legacy_price: Callable[[], int]) -> dict:
-    return view(run, view_price(run) if run.get("version_id") else legacy_price())
-
-
 def get_run(run_id: int) -> dict:
-    return view_for(load(run_id), prices.price)
+    run = load(run_id)
+    return view(run, view_price(run))
 
 
 def list_runs(seller_id: str | None = None, status: str | None = None, purpose: str | None = None,
@@ -229,14 +179,7 @@ def list_runs(seller_id: str | None = None, status: str | None = None, purpose: 
             params.append(value)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     found = rows(f"SELECT * FROM runs {where} ORDER BY id DESC LIMIT ?", (*params, limit))
-    cache: list[int] = []
-
-    def legacy_price() -> int:
-        if not cache:
-            cache.append(prices.price())
-        return cache[0]
-
-    return [view_for(run, legacy_price) for run in found]
+    return [view(run, view_price(run)) for run in found]
 
 
 def order_locked(run_id: int, side: str, amount: int, reason: str, price: int, fee_bps: float,

@@ -24,6 +24,13 @@ def get_run(run_id: int):
     return {**run, "entries": ledger.entries(subject=f"run:{run_id}", limit=RUN_ENTRY_LIMIT)}
 
 
+@router.get("/api/runs/{run_id}/points")
+def run_points(run_id: int, since: int = 0):
+    run = referee.get_run(run_id)
+    return {"run_id": run_id, "quote": run.get("quote") or "USD", "start_cash": run["start_cash_usd"],
+            "points": referee.points(run_id, max(0, since))}
+
+
 @router.post("/api/runs/{run_id}/stop")
 def stop_run(run_id: int, seller: dict = Depends(require_seller)):
     run = referee.get_run(run_id)

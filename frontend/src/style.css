@@ -105,6 +105,7 @@ footer .wrap { padding-top: 22px; padding-bottom: 22px; display: flex; flex-wrap
 .toggle { display: inline-flex; border: 1px solid var(--ink); font: 13px var(--mono); }
 .toggle button { height: 40px; padding: 0 14px; border: 0; background: none; cursor: pointer; white-space: nowrap; }
 .toggle button[aria-pressed=true] { background: var(--ink); color: var(--paper); }
+.toggle button:disabled { color: var(--grey); text-decoration: line-through; cursor: not-allowed; }
 
 .chart { display: block; width: 100%; height: 260px; }
 .chart text { font: 11px var(--mono); fill: var(--grey); }

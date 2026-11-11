@@ -81,3 +81,24 @@ def parse_userinfo(info: dict) -> dict:
         "email": primary or listed or info.get("email") or "",
         "verified": info.get("verified_account") in (True, "true", "True"),
     }
+
+
+def require_intent(intent: str) -> None:
+    if intent not in ("AUTHORIZE", "CAPTURE"):
+        raise PayPalError(422, "INVALID_PARAMETER_VALUE", "intent must be AUTHORIZE or CAPTURE")
+
+
+def parse_capture(order: dict) -> dict:
+    units = order.get("purchase_units") or []
+    captures = ((units[0] if units else {}).get("payments") or {}).get("captures") or []
+    if not captures or not captures[0].get("id"):
+        raise PayPalError(422, "CAPTURE_MISSING", "order response holds no capture")
+    capture = captures[0]
+    email, payer_id = payer_identity(order)
+    return {
+        "capture_id": capture["id"],
+        "status": capture.get("status", ""),
+        "amount_cents": value_to_cents((capture.get("amount") or {}).get("value", "0")),
+        "payer_email": email,
+        "payer_id": payer_id,
+    }

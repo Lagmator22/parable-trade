@@ -189,3 +189,14 @@ def test_large_optimise_completes_quickly():
     start = time.time()
     out = optimize(spec, synthetic_bars(1000), top_k=5)
     assert out["evaluated"] == MAX_GRID and time.time() - start < 30
+
+
+def test_partial_callback_reports_rows_so_far():
+    from lab_support import make_bars
+    from parable.lab.optimize import optimize
+    from parable.lab.templates import template_spec
+
+    seen = []
+    optimize(template_spec("trend", "fake:X", "1h"), make_bars(600), top_k=2, partial=seen.append)
+    assert seen[0]["rows"] == [] and len(seen[-1]["rows"]) == 2
+    assert [len(p["rows"]) for p in seen][-2:] == [1, 2]
