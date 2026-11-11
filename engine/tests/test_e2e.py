@@ -22,7 +22,7 @@ def account(client, name: str, email: str) -> TestClient:
 
 def new_listing(seller, version_id, proof_id, title, mode, **terms) -> dict:
     body = {"version_id": version_id, "title": title, "pitch": "End to end.", "price_cents": 2000, "mode": mode,
-            "trial_s": 120, "min_return_bps": -50, "max_loss_bps": 1000, "proof_id": proof_id,
+            "trial_s": 36000, "min_return_bps": 0, "max_loss_bps": 1000, "proof_id": proof_id,
             "allow_test_drive": True, **terms}
     created = seller.post("/api/listings", json=body)
     assert created.status_code == 200, created.text
@@ -81,8 +81,7 @@ def test_full_marketplace_flow(world, monkeypatch, wait_until):
 
     rerun = bob.post(f"/api/listings/{hold['id']}/rerun", json={}).json()
     assert rerun["match"] is True and rerun["rerun"]["result_hash"] == rerun["claim"]["result_hash"]
-    assert rerun["rerun"]["by"] == "visitor" and anon.get(f"/api/listings/{hold['id']}").json()["reruns"] == {
-        "count": 1, "matched": 1}
+    assert rerun["rerun"]["by"] == "visitor" and anon.get(f"/api/listings/{hold['id']}").json()["reruns"]["count"] == 1
     drive = bob.post(f"/api/listings/{hold['id']}/test-drive", json={"symbol": "fake:ETHUSDT"}).json()
     assert drive["proof"]["kind"] == "testdrive" and drive["proof"]["data"]["symbol"] == "fake:ETHUSDT"
 

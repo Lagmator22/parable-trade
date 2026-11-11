@@ -67,6 +67,7 @@ export function Money({ purchase }: { purchase: PurchaseView }) {
       <IdRow label="Capture" value={purchase.paypal_capture_id}/>
       <IdRow label="Payout batch" value={purchase.paypal_payout_batch_id}/>
       <IdRow label="Payout status" value={purchase.payout_status}/>
+      {purchase.payout_waiting && <div><dt>Payout</dt><dd>Sent, waiting for the seller to claim it</dd></div>}
     </dl>
   </div>;
 }

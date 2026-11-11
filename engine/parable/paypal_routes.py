@@ -5,6 +5,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from parable import market
+from parable.db import one
 from parable.errors import LabError, MarketError
 from parable.identity import current_seller
 from parable.paypal import PayPalError, get_paypal, is_mock
@@ -77,16 +78,18 @@ async def mock_approve_submit(request: Request):
     return go(f"/paypal/return?token={order_id}&purchase={purchase_id}", 303)
 
 
-def purchase_id_for(token: str, purchase: str) -> str:
-    if purchase:
-        return purchase
-    found = market.find_purchase_by_order(token)
-    return found["id"] if found else ""
+def purchase_id_for(request: Request, token: str, purchase: str) -> str:
+    viewer = current_seller(request)
+    found = one("SELECT id, buyer_id FROM purchases WHERE id = ?", (purchase,)) if purchase else \
+        market.find_purchase_by_order(token)
+    if viewer is None or found is None or found.get("buyer_id") != viewer["id"]:
+        return ""
+    return found["id"]
 
 
 @router.get("/paypal/return")
-def paypal_return(token: str = "", purchase: str = ""):
-    purchase_id = purchase_id_for(token, purchase)
+def paypal_return(request: Request, token: str = "", purchase: str = ""):
+    purchase_id = purchase_id_for(request, token, purchase)
     if not purchase_id:
         return go("/#purchases")
     try:
@@ -97,8 +100,8 @@ def paypal_return(token: str = "", purchase: str = ""):
 
 
 @router.get("/paypal/cancel")
-def paypal_cancel(purchase: str = "", token: str = ""):
-    purchase_id = purchase_id_for(token, purchase)
+def paypal_cancel(request: Request, purchase: str = "", token: str = ""):
+    purchase_id = purchase_id_for(request, token, purchase)
     if not purchase_id:
         return go("/#purchases")
     try:

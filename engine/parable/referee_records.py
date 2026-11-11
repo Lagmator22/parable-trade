@@ -4,12 +4,13 @@ from parable.referee_math import return_bps
 
 def probation_passed(run: dict, thresholds: dict[str, int]) -> bool:
     threshold = thresholds.get(run["listing_id"], 0)
-    return run["cause"] == "expired" and return_bps(run["start_cash_usd"], run["final_equity_usd"]) >= threshold
+    return (run["cause"] == "expired" and run["trades"] >= 1 and (run.get("bars_seen") or 0) >= 3
+            and return_bps(run["start_cash_usd"], run["final_equity_usd"]) >= threshold)
 
 
 def seller_record(seller_id: str) -> dict:
     found = rows("SELECT * FROM runs WHERE seller_id = ?", (seller_id,))
-    ended = [r for r in found if r["status"] == "dead"]
+    ended = [r for r in found if r["status"] == "dead" and r["purpose"] != "practice"]
     returns = [return_bps(r["start_cash_usd"], r["final_equity_usd"]) for r in ended]
     survived = [r for r in ended if r["cause"] == "expired"]
     thresholds = {l["id"]: l["min_return_bps"] for l in rows(
@@ -19,7 +20,7 @@ def seller_record(seller_id: str) -> dict:
     tracks = [r for r in found if r["purpose"] == "track"]
     return {
         "runs": len(found),
-        "alive": len(found) - len(ended),
+        "alive": sum(r["status"] != "dead" for r in found),
         "ended": len(ended),
         "survived": len(survived),
         "loss_limit": sum(r["cause"] == "loss_limit" for r in ended),

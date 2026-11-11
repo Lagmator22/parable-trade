@@ -52,7 +52,7 @@ export function AgentPage({ id, me, onBuy }: Props) {
   const live = data.track && !instantOnly(data.symbol);
   return <section className="wrap page stack">
     <Head listing={data} mine={mine} onBuy={() => onBuy(data)}/>
-    <ProofSection proof={data.proof}/>
+    <ProofSection proof={data.proof} note={data.data_note}/>
     {data.benchmark && <BenchmarkTable benchmark={data.benchmark}/>}
     {live && data.track && <LiveTrack key={data.track.run_id} track={data.track}/>}
     <RerunPanel listing={data} onDone={reload}/>

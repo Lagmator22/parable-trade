@@ -12,8 +12,12 @@ from parable.lab.consts import (ASSET_KINDS, INTERVALS, MAX_BARS, MAX_FORMULA_LE
 from parable.lab.templates import list_templates
 from parable.models import NewListing
 from parable.paypal import is_mock
+from parable.routes_support import rate, visitor
 
 router = APIRouter()
+
+SHOPPER_PER_MINUTE = 6
+DILIGENCE_PER_MINUTE = 20
 
 
 class ShopperRequest(BaseModel):
@@ -131,14 +135,17 @@ def test_drive(listing_id: str, request: Request, response: Response, body: Test
 
 
 @router.get("/api/listings/{listing_id}/diligence")
-def listing_diligence(listing_id: str, request: Request):
+def listing_diligence(listing_id: str, request: Request, response: Response):
     visible_listing(listing_id, request)
+    rate(visitor(request, response), "diligence", DILIGENCE_PER_MINUTE)
     return diligence.report(listing_id)
 
 
 @router.post("/api/shopper")
-def shop(request: ShopperRequest):
-    answer = shopper.recommend(request.query, request.budget_cents)
+def shop(body: ShopperRequest, request: Request, response: Response):
+    rate(visitor(request, response), "shopper", SHOPPER_PER_MINUTE)
+    quota.hit_llm_budget()
+    answer = shopper.recommend(body.query, body.budget_cents)
     found = {item["id"]: item for item in market.list_listings()}
     return {**answer, "listing": found.get(answer["listing_id"]),
             "alternative_listings": [found[key] for key in answer["alternatives"] if key in found]}

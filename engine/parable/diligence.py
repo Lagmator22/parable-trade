@@ -4,6 +4,8 @@ import threading
 import time
 
 from parable import analyst
+from parable.errors import LabError
+from parable.lab import quota
 from parable.db import one
 from parable.listing_views import listing_summary
 from parable.listings import listing_row
@@ -216,6 +218,14 @@ def merge_flags(red_flags: list[str], flags: list[str]) -> list[str]:
     return red_flags + [flag for flag in flags if flag not in red_flags]
 
 
+def ask_within_budget(prompt: str) -> dict | None:
+    try:
+        quota.hit_llm_budget()
+    except LabError:
+        return None
+    return analyst.ask(prompt)
+
+
 def build_report(listing: dict) -> dict:
     facts = gather_facts(listing)
     flags = pitch_flags(listing)
@@ -223,10 +233,10 @@ def build_report(listing: dict) -> dict:
     shown = prompt_facts(listing, facts)
     allowed = json.dumps(shown)
     prompt = build_prompt(shown)
-    first = analyst.ask(prompt)
+    first = ask_within_budget(prompt)
     accepted = accept_answer(first, baseline["risk"], allowed)
     if accepted is None and first:
-        accepted = accept_answer(analyst.ask(retry_prompt(prompt, first, allowed)), baseline["risk"], allowed)
+        accepted = accept_answer(ask_within_budget(retry_prompt(prompt, first, allowed)), baseline["risk"], allowed)
     if accepted is None:
         return baseline
     accepted["red_flags"] = merge_flags(accepted["red_flags"], flags)

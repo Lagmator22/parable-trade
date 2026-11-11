@@ -6,16 +6,26 @@ import httpx
 
 from parable.config import get_settings, paypal_mocked
 from parable.paypal_core import (
+    API_URLS,
+    BRAND_NAME,
+    LOGIN_SCOPE,
+    LOGIN_URLS,
+    REQUEST_TIMEOUT_S,
+    TOKEN_SAFETY_MARGIN_S,
+    WEBHOOK_HEADERS,
     PayPalError,
     approve_url,
     cents_to_value,
     error_from_payload,
     first_authorization,
+    json_or_none,
     money,
     parse_userinfo,
     parse_capture,
     payer_identity,
     require_intent,
+    segment,
+    trusted_cert_url,
     unexpected_response,
     value_to_cents,
 )
@@ -31,32 +41,6 @@ __all__ = [
     "set_paypal",
     "value_to_cents",
 ]
-
-API_URLS = {"sandbox": "https://api-m.sandbox.paypal.com", "live": "https://api-m.paypal.com"}
-LOGIN_URLS = {"sandbox": "https://www.sandbox.paypal.com", "live": "https://www.paypal.com"}
-LOGIN_SCOPE = "openid profile email https://uri.paypal.com/services/paypalattributes"
-BRAND_NAME = "Parable"
-TOKEN_SAFETY_MARGIN_S = 60
-REQUEST_TIMEOUT_S = 20.0
-WEBHOOK_HEADERS = {
-    "transmission_id": "paypal-transmission-id",
-    "transmission_time": "paypal-transmission-time",
-    "cert_url": "paypal-cert-url",
-    "auth_algo": "paypal-auth-algo",
-    "transmission_sig": "paypal-transmission-sig",
-}
-
-
-def segment(value: str) -> str:
-    return quote(str(value), safe="")
-
-
-def json_or_none(response: httpx.Response):
-    try:
-        return response.json()
-    except ValueError:
-        return None
-
 
 class PayPalClient:
     def __init__(self, client_id=None, client_secret=None, env=None, http=None, clock=time.time):
@@ -246,7 +230,7 @@ class PayPalClient:
     def verify_webhook(self, headers, body, webhook_id) -> bool:
         lowered = {str(key).lower(): value for key, value in headers.items()}
         fields = {field: lowered.get(header) for field, header in WEBHOOK_HEADERS.items()}
-        if not webhook_id or not all(fields.values()):
+        if not webhook_id or not all(fields.values()) or not trusted_cert_url(fields["cert_url"]):
             return False
         payload = {**fields, "webhook_id": webhook_id, "webhook_event": body}
         try:

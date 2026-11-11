@@ -7,7 +7,7 @@ from ..db import one
 from ..errors import LabError
 from ..models import StrategySpec
 from .consts import INTERVALS, MAX_PARAM_VALUES, MAX_PARAMS, MAX_PERIOD, MAX_SPEC_BYTES
-from .formula import FormulaError, dry_run, parse, period_params, referenced_params, warmup
+from .formula import FormulaError, check_cost, dry_run, parse, period_params, referenced_params, warmup
 from .formula_defs import NAME_RE, RESERVED
 from .numeric import canonical_json, round_floats, sha256_hex
 
@@ -38,7 +38,10 @@ def spec_hash(spec: StrategySpec) -> str:
 def param_count(low: float, high: float, step: float) -> int:
     if not all(math.isfinite(x) for x in (low, high, step)) or step <= 0 or high < low:
         return 0
-    return int(math.floor((high - low) / step + 1e-9)) + 1
+    ratio = (high - low) / step + 1e-9
+    if not math.isfinite(ratio):
+        return MAX_PARAM_VALUES + 1
+    return int(math.floor(ratio)) + 1
 
 
 def _param_errors(spec: StrategySpec, periods: set[str]) -> list[str]:
@@ -92,6 +95,7 @@ def validate_spec(spec: StrategySpec) -> None:
         errors.append(f"spec larger than {MAX_SPEC_BYTES} bytes")
     if not errors:
         try:
+            check_cost(spec)
             dry_run(spec)
         except FormulaError as exc:
             errors.append(f"dry run: {exc}")

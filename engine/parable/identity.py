@@ -10,7 +10,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from parable.config import get_settings, paypal_mode
+from parable.config import get_settings, paypal_mocked, paypal_mode, weak_secret
 from parable.db import DB_LOCK, execute, one
 from parable.identity_pages import mock_login_page
 from parable.paypal import PayPalError, get_paypal, is_mock
@@ -32,7 +32,12 @@ fallback_secret = secrets.token_hex(32)
 
 
 def secret_key() -> str:
-    return get_settings().session_secret or fallback_secret
+    configured = get_settings().session_secret
+    if not configured:
+        return fallback_secret
+    if weak_secret(configured) and not paypal_mocked():
+        raise RuntimeError("SESSION_SECRET is too short or still the placeholder; use at least 32 random characters")
+    return configured
 
 
 def sign(salt: str, payload: dict) -> str:

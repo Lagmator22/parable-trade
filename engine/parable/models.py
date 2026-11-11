@@ -75,7 +75,7 @@ class NewListing(BaseModel):
     price_cents: int = Field(ge=100, le=50_000)
     mode: Literal["hold", "instant"] = "hold"
     trial_s: int = Field(default=3600, ge=60, le=259_200)
-    min_return_bps: int = Field(default=0, ge=-5000, le=5000)
+    min_return_bps: int = Field(default=0, ge=0, le=5000)
     max_loss_bps: int = Field(default=2000, ge=10, le=5000)
     proof_id: str
     allow_test_drive: bool = True

@@ -1,4 +1,7 @@
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from urllib.parse import quote, urlparse
+
+import httpx
 
 CURRENCY = "USD"
 ERROR_DETAIL_LIMIT = 300
@@ -102,3 +105,34 @@ def parse_capture(order: dict) -> dict:
         "payer_email": email,
         "payer_id": payer_id,
     }
+
+
+API_URLS = {"sandbox": "https://api-m.sandbox.paypal.com", "live": "https://api-m.paypal.com"}
+LOGIN_URLS = {"sandbox": "https://www.sandbox.paypal.com", "live": "https://www.paypal.com"}
+LOGIN_SCOPE = "openid profile email https://uri.paypal.com/services/paypalattributes"
+BRAND_NAME = "Parable"
+TOKEN_SAFETY_MARGIN_S = 60
+REQUEST_TIMEOUT_S = 20.0
+WEBHOOK_HEADERS = {
+    "transmission_id": "paypal-transmission-id",
+    "transmission_time": "paypal-transmission-time",
+    "cert_url": "paypal-cert-url",
+    "auth_algo": "paypal-auth-algo",
+    "transmission_sig": "paypal-transmission-sig",
+}
+
+
+def trusted_cert_url(url: str) -> bool:
+    parsed = urlparse(str(url))
+    return parsed.scheme == "https" and (parsed.hostname or "").endswith(".paypal.com")
+
+
+def segment(value: str) -> str:
+    return quote(str(value), safe="")
+
+
+def json_or_none(response: httpx.Response):
+    try:
+        return response.json()
+    except ValueError:
+        return None

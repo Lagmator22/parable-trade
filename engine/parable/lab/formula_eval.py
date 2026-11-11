@@ -6,6 +6,7 @@ from .consts import MAX_PERIOD
 from .formula_defs import FUNCS, SERIES, FormulaError
 
 MAX_STEPS = 5_000_000
+PERIOD_WEIGHT = 10
 _ARITH = {"Add": operator.add, "Sub": operator.sub, "Mult": operator.mul}
 _COMPARE = {
     "Lt": operator.lt, "LtE": operator.le, "Gt": operator.gt,
@@ -76,6 +77,7 @@ class _Eval:
         self.columns = columns
         self.params = params
         self.n = n
+        self.cost = 0
 
     def series(self, value) -> list:
         if isinstance(value, list):
@@ -112,11 +114,15 @@ class _Eval:
         fn = node.func.id
         kinds = FUNCS[fn][0]
         args = []
+        self.cost += self.n
+        if self.cost > MAX_STEPS:
+            raise FormulaError("formula too expensive for this many bars")
         for kind, arg in zip(kinds, node.args):
             if kind == "s":
                 args.append(self.series(self.node(arg)))
             elif kind == "p":
                 args.append(self.period(arg))
+                self.cost += self.n * (args[-1] // PERIOD_WEIGHT)
             else:
                 args.append(self.scalar(arg))
         return _call(fn, args, self.columns)
@@ -191,7 +197,9 @@ def run_formula(root, nodes: int, columns: dict, params: dict) -> list:
     for name in params:
         if name in SERIES or name in FUNCS:
             raise FormulaError(f"parameter name '{name}' is reserved")
-    result = _Eval(columns, params, n).node(root)
+    evaluator = _Eval(columns, params, n)
+    evaluator.cost = n * nodes
+    result = evaluator.node(root)
     return list(result) if isinstance(result, list) else [result] * n
 
 
@@ -238,3 +246,26 @@ def warm_up(node, params: dict) -> int:
     if fn in ("cross_above", "cross_below"):
         return base + 1
     return base + _offset(fn, scalars)
+
+
+def static_cost(node, params: dict, bars: int) -> int:
+    kind = node.__class__.__name__
+    if kind in ("Constant", "Name"):
+        return bars
+    if kind == "BinOp":
+        children = [node.left, node.right]
+    elif kind == "Compare":
+        children = [node.left, node.comparators[0]]
+    elif kind == "BoolOp":
+        children = list(node.values)
+    elif kind == "UnaryOp":
+        children = [node.operand]
+    else:
+        total = bars
+        for arg_kind, arg in zip(FUNCS[node.func.id][0], node.args):
+            if arg_kind == "s":
+                total += static_cost(arg, params, bars)
+            elif arg_kind == "p":
+                total += bars * (max(1, int(round(_scalar_value(arg, params)))) // PERIOD_WEIGHT)
+        return total
+    return bars + sum(static_cost(child, params, bars) for child in children)

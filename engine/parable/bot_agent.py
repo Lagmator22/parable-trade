@@ -79,6 +79,12 @@ def new_closed_bars(rules: RunRules, spec, last_bar_t: int) -> list | None:
     return closed if closed and closed[-1][0] > last_bar_t else None
 
 
+def count_new_bars(closed: list, last_bar_t: int) -> int:
+    if not last_bar_t:
+        return 1
+    return max(1, sum(1 for bar in closed if bar[0] > last_bar_t))
+
+
 def tick(run_id: int, rules: RunRules, spec, state: dict) -> bool:
     if referee.load(run_id)["status"] != "alive":
         return False
@@ -90,7 +96,7 @@ def tick(run_id: int, rules: RunRules, spec, state: dict) -> bool:
     closed = new_closed_bars(rules, spec, run["last_bar_t"])
     if closed is not None and run["status"] == "alive":
         act_on_bar(run_id, run, rules, spec, closed, state)
-        referee.mark(run_id, last_bar_t=int(closed[-1][0]))
+        referee.mark(run_id, last_bar_t=int(closed[-1][0]), new_bars=count_new_bars(closed, run["last_bar_t"]))
     return True
 
 

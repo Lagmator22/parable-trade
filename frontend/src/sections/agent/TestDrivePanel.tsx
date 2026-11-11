@@ -5,7 +5,8 @@ import { Button } from '../../components/ui/Button';
 import { ProofChart } from '../../components/ProofChart';
 import { MetricsGrid } from '../../components/MetricsGrid';
 
-const INTERVALS = ['1h', '4h', '1d'];
+const BASE_INTERVALS = ['1h', '4h', '1d'];
+export const intervalChoices = (own: string) => (BASE_INTERVALS.includes(own) ? BASE_INTERVALS : [own, ...BASE_INTERVALS]);
 const seconds = (day: string) => (day ? Math.floor(new Date(`${day}T00:00:00Z`).getTime() / 1000) : undefined);
 
 export function TestDrivePanel({ listing }: { listing: PublicListing }) {
@@ -40,7 +41,7 @@ export function TestDrivePanel({ listing }: { listing: PublicListing }) {
       </div>
       <div className="td-form">
         <div className="toggle" role="group" aria-label="Interval">
-          {INTERVALS.map(i => <button key={i} type="button" aria-pressed={interval === i} onClick={() => setInterval(i)}>{i}</button>)}
+          {intervalChoices(listing.interval).map(i => <button key={i} type="button" aria-pressed={interval === i} onClick={() => setInterval(i)}>{i}</button>)}
         </div>
         <label className="field"><span className="field-label">From</span><input type="date" value={from} onChange={e => setFrom(e.target.value)}/></label>
         <label className="field"><span className="field-label">To</span><input type="date" value={to} onChange={e => setTo(e.target.value)}/></label>

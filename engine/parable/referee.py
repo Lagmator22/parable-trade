@@ -85,7 +85,7 @@ def open_agent_run(seller_id: str, rules: RunRules, purpose: str, name: str, lis
         )
         ledger.append("run.started", f"run:{run_id}", {
             "seller_id": seller_id, "listing_id": listing_id, "purchase_id": purchase_id, "purpose": purpose,
-            "name": name, "rules": rules.model_dump(), "version_id": rules.version_id,
+            "name": name, "rules": {k: v for k, v in rules.model_dump().items() if k != "version_id"},
             "spec_hash": rules.spec_hash, "start_cash": rules.start_cash,
             "expires_at": started + rules.lease_seconds,
         })
@@ -217,9 +217,10 @@ def record_point(run_id: int, price: int | None = None) -> None:
     insert_point(run_id, now(), equity_at(run, seen), seen if seen else None)
 
 
-def mark(run_id: int, *, last_bar_t: int | None = None, price: int | None = None) -> None:
+def mark(run_id: int, *, last_bar_t: int | None = None, price: int | None = None, new_bars: int = 0) -> None:
     if last_bar_t is not None:
-        execute("UPDATE runs SET last_bar_t = ? WHERE id = ?", (last_bar_t, run_id))
+        execute("UPDATE runs SET last_bar_t = ?, bars_seen = bars_seen + ? WHERE id = ?",
+                (last_bar_t, max(0, new_bars), run_id))
     if price is not None:
         execute("UPDATE runs SET high_water = ? WHERE id = ? AND units > 0 AND high_water < ?",
                 (price, run_id, price))

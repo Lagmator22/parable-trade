@@ -53,9 +53,13 @@ def set_transport(transport: httpx.BaseTransport | None) -> None:
     _transport = transport
 
 
+TOKEN_SHAPES = re.compile(r"sk-[A-Za-z0-9_\-]{8,}|AIza[0-9A-Za-z_\-]{10,}|Bearer\s+[A-Za-z0-9._\-]{8,}")
+
+
 def redact(text: str, key: str | None) -> str:
     text = str(text)
-    return text.replace(key, "***") if key else text
+    text = text.replace(key, "***") if key else text
+    return TOKEN_SHAPES.sub("***", text)
 
 
 def auth_from_headers(provider: str | None, model: str | None, key: str | None) -> AiAuth | None:
@@ -82,7 +86,7 @@ def call(method: str, url: str, key: str | None, timeout: float, **kwargs) -> di
         raise LabError(503, "model_unavailable", "the AI provider could not be reached")
     status = response.status_code
     if status >= 400:
-        body = redact(response.text[:BODY_CHARS], key)
+        body = redact(response.text, key)[:BODY_CHARS]
         log.info("ai provider answered %s", status)
         if status in (401, 403):
             raise LabError(401, "bad_key", "the AI provider rejected that key")

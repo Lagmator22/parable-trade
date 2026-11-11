@@ -12,7 +12,7 @@ from parable.lab.spec import SpecError, parse_spec, spec_hash
 from parable.lab.templates import template_spec
 from parable.models import StrategySpec
 from parable.routes_support import (DataRequest, account_of, charge, check_symbol_interval, own_auth, pick_ai, rate,
-                                    rate_ai, rate_lab, visitor)
+                                    rate_ai, rate_lab, signin, visitor)
 
 router = APIRouter()
 
@@ -105,6 +105,7 @@ def compile_route(body: CompileBody, request: Request, response: Response):
         raise spec_error(err) from None
     auth, platform = pick_ai(who, body.model, own_auth(request))
     tries = charge(who, platform)
+    quota.hit_llm_budget()
     built = compiler.compile_steps(body.steps, body.symbol, body.interval, auth, base=base)
     return compile_view(built, tries)
 
@@ -164,8 +165,8 @@ def backtest_route(body: BacktestBody, request: Request, response: Response):
 
 
 @router.post("/api/lab/optimize")
-def optimize_route(body: OptimizeBody, request: Request, response: Response):
-    who = visitor(request, response)
+def optimize_route(body: OptimizeBody, request: Request):
+    who = signin(request)
     rate(who, "optimize", OPTIMIZE_PER_MINUTE)
     try:
         spec = parsed(body.spec)

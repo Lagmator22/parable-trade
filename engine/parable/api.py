@@ -8,7 +8,8 @@ from fastapi.staticfiles import StaticFiles
 
 from parable import identity, market, runs, webhooks
 from parable.api_support import install_error_handlers
-from parable.config import REPO_ROOT, get_settings
+from parable.config import REPO_ROOT, get_settings, is_production, startup_problems
+from parable.guard import RequestGuard, script_hashes
 from parable.db import get_db
 from parable.paypal_routes import router as paypal_router
 from parable.routes_agents import router as agents_router
@@ -31,6 +32,10 @@ BUILD_HINT = """<!doctype html>
 
 
 def start_services():
+    problems = startup_problems()
+    if problems:
+        raise RuntimeError("; ".join(problems))
+    identity.secret_key()
     get_db()
     if get_settings().parable_demo_seed:
         log.info("seeded %s demo listings", seed_demo())
@@ -65,6 +70,11 @@ def register_frontend(app: FastAPI, dist: Path) -> None:
         app.mount("/assets", StaticFiles(directory=dist / "assets"), name="assets")
 
 
+def inline_hashes(dist: Path) -> list[str]:
+    index = dist / "index.html"
+    return script_hashes(index.read_text(encoding="utf-8")) if index.is_file() else []
+
+
 def create_app(dist: Path = FRONTEND_DIST) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -72,12 +82,14 @@ def create_app(dist: Path = FRONTEND_DIST) -> FastAPI:
         yield
         stop_services(manager, stop_cancel_loop)
 
-    app = FastAPI(title="Parable", lifespan=lifespan)
+    docs = {} if not is_production() else {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    app = FastAPI(title="Parable", lifespan=lifespan, **docs)
     install_error_handlers(app)
     for router in (identity.router, webhooks.router, lab_router, agents_router, market_router, purchases_router,
                    runs_router, paypal_router):
         app.include_router(router)
     register_frontend(app, dist)
+    app.add_middleware(RequestGuard, hashes=inline_hashes(dist))
     return app
 
 

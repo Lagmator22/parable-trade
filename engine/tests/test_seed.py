@@ -70,3 +70,25 @@ def test_app_seeds_on_boot_when_enabled(monkeypatch, tmp_path):
     get_settings.cache_clear()
     with TestClient(api.create_app(tmp_path)) as running:
         assert len(running.get("/api/listings").json()) == 6
+
+
+def test_seed_never_runs_with_live_paypal(monkeypatch, manager):
+    monkeypatch.setenv("PARABLE_MOCK_PAYPAL", "0")
+    monkeypatch.setenv("PAYPAL_ENV", "live")
+    monkeypatch.setenv("PAYPAL_CLIENT_ID", "id")
+    monkeypatch.setenv("PAYPAL_CLIENT_SECRET", "secret")
+    from parable.config import get_settings
+
+    get_settings.cache_clear()
+    assert seed.seed_demo() == 0
+    assert market.list_listings() == []
+
+
+def test_demo_payout_email_goes_to_seeded_sellers(monkeypatch, manager):
+    monkeypatch.setenv("DEMO_PAYOUT_EMAIL", "sandbox.me@example.com")
+    from parable.config import get_settings
+
+    get_settings.cache_clear()
+    seed.seed_demo()
+    emails = {row["email"] for row in rows("SELECT email FROM sellers")}
+    assert emails == {"sandbox.me@example.com"}

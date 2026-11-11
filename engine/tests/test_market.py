@@ -104,7 +104,7 @@ def test_purchase_views_hide_license_until_paid_and_mask_paypal_ids(manager, set
     assert view["license"]["key"].startswith("pk_") and view["license"]["spec"]["entry"]
     order = purchase_row(purchase["id"])["paypal_order_id"]
     assert view["paypal_order_id"].startswith("***") and view["paypal_order_id"][-6:] == order[-6:]
-    assert view["payout_cents"] == 1800 and view["threshold"] == {"min_return_bps": -50, "max_loss_bps": 1000}
+    assert view["payout_cents"] == 1800 and view["threshold"] == {"min_return_bps": 0, "max_loss_bps": 1000}
     assert "buyer_email" not in view and view["run"]["status"] == "dead" and "rules" not in view["run"]
     assert [entry["seq"] for entry in view["timeline"]] == sorted(entry["seq"] for entry in view["timeline"])
     assert view["verdict"]["passed"] is True and view["verdict"]["explanation"]
@@ -158,7 +158,7 @@ def test_webhooks_reconcile_payout_and_capture(manager, settled):
     market.on_webhook("PAYMENT.PAYOUTS-ITEM.UNCLAIMED", {
         "payout_batch_id": raw["paypal_payout_batch_id"], "transaction_status": "UNCLAIMED"})
     after = purchase_row(purchase["id"])
-    assert after["payout_status"] == "UNCLAIMED" and "unclaimed" in after["error"]
+    assert after["payout_status"] == "UNCLAIMED" and not after["error"]
     market.on_webhook("PAYMENT.PAYOUTSBATCH.SUCCESS", {"batch_header": {
         "payout_batch_id": raw["paypal_payout_batch_id"], "batch_status": "SUCCESS"}})
     assert purchase_row(purchase["id"])["payout_status"] == "SUCCESS"

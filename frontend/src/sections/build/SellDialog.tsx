@@ -1,19 +1,20 @@
 import { useState } from 'react';
 import { createListing, type SaleMode } from '../../api';
-import { instantOnly, promise } from '../../format';
+import { duration, instantOnly, minTrialSeconds, promise, trialChoices, trialReason } from '../../format';
 import { Button } from '../../components/ui/Button';
-import type { Build } from './useBuild';
-
-const TRIALS: [number, string][] = [[3600, '1 hour'], [21600, '6 hours'], [86400, '1 day'], [259200, '3 days']];
+import { summaryOf, type Build } from './useBuild';
 
 export function SellDialog({ build, onClose }: { build: Build; onClose: () => void }) {
   const [title, setTitle] = useState(build.spec?.name ?? '');
-  const [pitch, setPitch] = useState(build.spec?.summary ?? '');
+  const [pitch, setPitch] = useState(build.spec ? summaryOf(build.spec, build.rules ?? []) : '');
   const [price, setPrice] = useState('19');
   const holdOff = instantOnly(build.spec?.symbol ?? build.market?.symbol ?? '');
   const [picked, setMode] = useState<SaleMode>('hold');
   const mode: SaleMode = holdOff ? 'instant' : picked;
-  const [trial, setTrial] = useState(86400);
+  const interval = build.spec?.interval ?? build.interval ?? '1h';
+  const allowed = trialChoices.filter(([s]) => !trialReason(s, interval));
+  const [chosen, setTrial] = useState(86400);
+  const trial = allowed.some(([s]) => s === chosen) ? chosen : (allowed[0]?.[0] ?? 259200);
   const [minReturn, setMinReturn] = useState('0');
   const [maxLoss, setMaxLoss] = useState('10');
   const [drive, setDrive] = useState(true);
@@ -23,7 +24,7 @@ export function SellDialog({ build, onClose }: { build: Build; onClose: () => vo
   const cents = Math.round(Number(price) * 100);
   const minBps = Math.round(Number(minReturn) * 100);
   const lossBps = Math.round(Number(maxLoss) * 100);
-  const okForm = title.trim().length >= 3 && cents >= 100 && cents <= 50000 && Number.isFinite(minBps) && lossBps >= 10 && lossBps <= 5000;
+  const okForm = title.trim().length >= 3 && cents >= 100 && cents <= 50000 && Number.isFinite(minBps) && minBps >= 0 && lossBps >= 10 && lossBps <= 5000;
 
   async function submit() {
     if (!saved?.versionId || !saved.proofId) return;
@@ -57,8 +58,9 @@ export function SellDialog({ build, onClose }: { build: Build; onClose: () => vo
         <p className="say">{mode === 'hold' ? 'Buyer pays after a live trial. You are paid only if it passes.' : 'Buyer pays now. You are paid at once.'}</p>
         {mode === 'hold' && <>
           <div className="toggle" role="group" aria-label="Trial length">
-            {TRIALS.map(([s, l]) => <button key={s} type="button" aria-pressed={trial === s} onClick={() => setTrial(s)}>{l}</button>)}
+            {trialChoices.map(([s, l]) => <button key={s} type="button" aria-pressed={trial === s} disabled={!!trialReason(s, interval)} title={trialReason(s, interval)} onClick={() => setTrial(s)}>{l}</button>)}
           </div>
+          <p className="say" role="note">A trial must cover at least {duration(minTrialSeconds(interval))} ({interval} bars, 10 of them). Shorter choices are greyed out. The trial only passes if the agent trades at least once and sees enough bars.</p>
           <div className="two">
             <label className="field"><span className="field-label">Min return %</span><input inputMode="decimal" value={minReturn} onChange={e => setMinReturn(e.target.value)}/></label>
             <label className="field"><span className="field-label">Max loss %</span><input inputMode="decimal" value={maxLoss} onChange={e => setMaxLoss(e.target.value)}/></label>

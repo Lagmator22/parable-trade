@@ -55,3 +55,29 @@ test('validates the form and needs a stored proof', async () => {
   expect(press(view.host, 'List for sale').disabled).toBe(true);
   await view.unmount();
 });
+
+test('short trials are only offered where 10 bars fit, and the reason is shown', async () => {
+  const hourly = await mount(<SellDialog build={make('binance:BTCUSDT')} onClose={() => {}}/>);
+  const twoMinutes = press(hourly.host, '2 min');
+  expect(twoMinutes.disabled).toBe(true);
+  expect(twoMinutes.title).toContain('at least 10 bars');
+  expect(press(hourly.host, '1 day').disabled).toBe(false);
+  await hourly.unmount();
+  const fast = make('binance:BTCUSDT');
+  (fast.spec as unknown as { interval: string }).interval = '1s';
+  const view = await mount(<SellDialog build={fast} onClose={() => {}}/>);
+  expect(press(view.host, '2 min').disabled).toBe(false);
+  await view.click(press(view.host, '2 min'));
+  await view.click(press(view.host, 'List for sale'));
+  expect(calls[0].body).toMatchObject({ trial_s: 120 });
+  await view.unmount();
+});
+
+test('the pitch follows the edited formulas instead of the stale AI summary', async () => {
+  const edited = make('binance:BTCUSDT');
+  (edited.spec as unknown as { built_by: string }).built_by = 'manual';
+  (edited as unknown as { rules: unknown[] }).rules = [{ kind: 'entry', text: 'Buy when RSI is below 30' }];
+  const view = await mount(<SellDialog build={edited} onClose={() => {}}/>);
+  expect((view.host.querySelector('textarea') as HTMLTextAreaElement).value).toContain('Buy when RSI is below 30');
+  await view.unmount();
+});

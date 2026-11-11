@@ -47,7 +47,7 @@ def buy_and_hold(bars: list, interval: str) -> dict:
 
 
 def failed(model: str, error: str) -> dict:
-    return {"model": model, "ok": False, "error": error, "summary": "", "metrics": None, "curve": None,
+    return {"model": model, "ok": False, "error": error[:120], "summary": "", "metrics": None, "curve": None,
             "spec_hash": None, "built_by": None, "rules": [], "spec": None}
 
 

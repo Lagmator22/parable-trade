@@ -24,7 +24,7 @@ Anyone can show a backtest that looks great. Backtest means "pretend to trade on
 
 ## How PayPal is used
 
-All of this uses the PayPal sandbox. A built-in fake PayPal replaces it when no keys are set, so the whole app also runs offline.
+All of this uses the PayPal sandbox. A built-in fake PayPal is used only when you set `PARABLE_MOCK_PAYPAL=1`, so the whole app can also run offline. Without PayPal keys and without that flag the server refuses to start.
 
 | PayPal feature | What it does here | Files |
 |---|---|---|
@@ -113,9 +113,11 @@ Settings are read from environment variables or from a `.env` file in the repo r
 | `PAYPAL_CLIENT_SECRET` | Secret of that app | empty |
 | `PAYPAL_ENV` | `sandbox` or `live` | `sandbox` |
 | `PAYPAL_WEBHOOK_ID` | ID of the webhook, used to verify signatures | empty |
-| `PARABLE_MOCK_PAYPAL` | `1` forces the fake PayPal. It is also used when the client ID or secret is empty | `0` |
+| `PARABLE_MOCK_PAYPAL` | `1` uses the fake PayPal (offline development only). It is never used unless you set it, and the server refuses to start without PayPal keys when it is off | `0` |
+| `PARABLE_ENV` | `production` makes the server refuse to start with the fake PayPal, `PRICE_SOURCE=sim`, or a `SESSION_SECRET` shorter than 32 characters | empty |
+| `DEMO_PAYOUT_EMAIL` | Payout email given to the seeded demo creators (use a PayPal sandbox account you own). Empty keeps the example.com addresses | empty |
 | `PUBLIC_BASE_URL` | Public address of the site, used for PayPal login and return URLs. An `https://` value turns on secure cookies | `http://localhost:8000` |
-| `SESSION_SECRET` | Signs login cookies. If empty, a random one is made at each start and everyone is signed out on restart | empty |
+| `SESSION_SECRET` | Signs login cookies. Must be at least 32 random characters (the placeholder text and short values are refused unless the fake PayPal is on). If empty, a random one is made at each start and everyone is signed out on restart; `PARABLE_ENV=production` refuses empty | empty |
 | `PLATFORM_FEE_BPS` | Platform fee in basis points (100 = 1%) | `1000` |
 | `DATABASE_PATH` | SQLite file path | `parable.db` |
 | `PRICE_SOURCE` | `live` or `sim` | `live` |
@@ -227,6 +229,14 @@ TODO (owner): add screenshots of the Build page, an Agent page with the re-run r
 - **PayPal is in sandbox mode.** No real money moves unless you set `PAYPAL_ENV=live`, which this project has not been tested with.
 - **One server, one SQLite file.** There is no clustering. Run one copy of the server only.
 - The payout goes to the email of the creator's PayPal account. A payout to an email with no PayPal account can fail or stay unclaimed.
+- **Known gaps (not fixed).**
+  - Refunds, disputes and chargebacks are not handled (M3). An instant sale pays the seller at once, so a later dispute is only logged and the license is not revoked.
+  - A live track shows its trades and equity while it runs (M4), and test-drive acts as a partial oracle for how an agent behaves (M5). Anyone can learn an agent's habits without buying it.
+  - Run exactly one server process (M12). Purchase locks, rate limits, jobs and the draft store live in memory, and every extra process would restart the bots again.
+  - Sessions are stateless cookies that last 7 days (M15). Logging out removes the cookie but a stolen cookie stays valid until it expires.
+  - Payouts go by email, and PayPal's verified flag is not required to list (L7).
+  - The ledger chain lives in the same database it protects (L9). Whoever can write the file could rebuild it. Publish the head hash somewhere else if that matters.
+  - The number of backtests a creator tried before listing is not shown.
 
 ## Roadmap
 

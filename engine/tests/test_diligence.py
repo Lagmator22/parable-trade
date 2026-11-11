@@ -39,7 +39,7 @@ def test_facts_come_from_the_proof_and_never_the_spec(manager):
 
 
 def test_strong_listing_is_low_risk_without_red_flags(manager):
-    proofs.rerun_listing(strong_listing()["id"], "v_abcdef0123456789")
+    proofs.rerun_listing(strong_listing()["id"], make_seller("Checker", "checker@example.com")["id"])
     listing = strong_listing(title="Second")
     report = diligence.report(listing["id"])
     assert report["risk"] == "low" and report["red_flags"] == []
@@ -50,7 +50,7 @@ def test_every_red_flag_is_raised_from_the_facts(manager):
     listing = make_listing()
     set_headline(listing, total_return_pct=-5.0, benchmark_return_pct=10.0, max_drawdown_pct=55.0, trades=4)
     referee.stop(listing["track_run_id"], "loss_limit")
-    proofs.rerun_listing(listing["id"], "v_abcdef0123456789")
+    proofs.rerun_listing(listing["id"], make_seller("Checker", "checker@example.com")["id"])
     execute("UPDATE proofs SET matched = 0 WHERE listing_id = ? AND kind = 'rerun'", (listing["id"],))
     flags = " ".join(diligence.build_report(listing)["red_flags"])
     for phrase in ("Only 4 trades", "below simply buying", "deep drawdown of 55.0%", "only 17 days",
@@ -76,7 +76,7 @@ def test_report_is_cached_until_the_evidence_changes(manager, monkeypatch):
     monkeypatch.setattr(analyst, "ask", lambda prompt: calls.append(prompt))
     first = diligence.report(listing["id"])
     assert diligence.report(listing["id"]) is first and len(calls) == 1
-    proofs.rerun_listing(listing["id"], "v_abcdef0123456789")
+    proofs.rerun_listing(listing["id"], make_seller("Checker", "checker@example.com")["id"])
     assert diligence.report(listing["id"]) is not first and len(calls) == 2
 
 

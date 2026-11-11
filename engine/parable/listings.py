@@ -7,11 +7,13 @@ from parable import ledger, referee, runs
 from parable.db import DB_LOCK, execute, one, rows
 from parable.errors import LabError
 from parable.live_symbols import is_live_symbol, require_instant_mode, require_live_symbol
+from parable.lab.consts import INTERVAL_SECONDS
 from parable.models import NewListing
 
 log = logging.getLogger("parable.listings")
 
 ENSURE_EVERY_S = 60
+TRIAL_BARS = 10
 SETTLED_STATUSES = ("created", "cancelled")
 PASSED_STATUSES = ("passed", "captured", "paid_out")
 FAILED_STATUSES = ("failed", "voided")
@@ -54,6 +56,23 @@ def headline_proof(version_id: str, proof_id: str) -> dict:
     return proof
 
 
+def require_room_to_list(owner_id: str) -> None:
+    from parable.config import get_settings
+
+    held = one("SELECT COUNT(*) AS n FROM listings WHERE seller_id = ? AND active = 1", (owner_id,))["n"]
+    if held >= get_settings().max_listings_per_account:
+        raise LabError(429, "limit_reached", "you have too many active listings, pause one first")
+
+
+def require_trial_length(data: NewListing, interval: str) -> None:
+    if data.mode != "hold":
+        return
+    needed = TRIAL_BARS * INTERVAL_SECONDS.get(interval, 0)
+    if data.trial_s < needed:
+        raise LabError(400, "bad_request",
+                       f"a hold trial on {interval} bars must last at least {needed} seconds (10 bars)")
+
+
 def start_track(listing: dict) -> dict | None:
     if not is_live_symbol(listing["symbol"]):
         return None
@@ -76,19 +95,23 @@ def start_track_safely(listing: dict) -> None:
 
 
 def create_listing(owner_id: str, data: NewListing) -> dict:
+    from parable.listing_views import resolve_kind
+
     context = version_context(owner_id, data.version_id)
     proof = headline_proof(data.version_id, data.proof_id)
     require_instant_mode(proof["symbol"], data.mode)
+    require_room_to_list(owner_id)
+    require_trial_length(data, proof["interval"])
     listing_id = "l_" + secrets.token_hex(5)
     title = data.title.strip()
     with DB_LOCK:
         execute(
             "INSERT INTO listings (id, seller_id, title, pitch, rules_json, fingerprint, price_cents, probation_s,"
             " min_return_bps, active, created_at, version_id, mode, trial_s, max_loss_bps, proof_id,"
-            " allow_test_drive, symbol, interval) VALUES (?,?,?,?,'','',?,?,?,1,?,?,?,?,?,?,?,?,?)",
+            " allow_test_drive, symbol, interval, kind) VALUES (?,?,?,?,'','',?,?,?,1,?,?,?,?,?,?,?,?,?,?)",
             (listing_id, owner_id, title, data.pitch.strip(), data.price_cents, data.trial_s, data.min_return_bps,
              int(time.time()), data.version_id, data.mode, data.trial_s, data.max_loss_bps, data.proof_id,
-             int(data.allow_test_drive), proof["symbol"], proof["interval"]))
+             int(data.allow_test_drive), proof["symbol"], proof["interval"], resolve_kind(proof["symbol"])))
         execute("UPDATE agents SET status = 'listed', updated_at = ? WHERE id = ?",
                 (int(time.time()), context["agent_id"]))
         ledger.append("listing.created", f"listing:{listing_id}", {

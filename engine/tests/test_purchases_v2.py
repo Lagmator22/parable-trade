@@ -28,7 +28,7 @@ def seq_of(kind: str, purchase_id: str) -> int:
 
 
 def test_hold_pass_captures_then_pays_out(manager, settled):
-    listing = make_listing(min_return_bps=-50)
+    listing = make_listing(min_return_bps=0)
     purchase = start(listing)
     assert get_paypal().get_order(purchase["paypal_order_id"])["intent"] == "AUTHORIZE"
     row = approve_and_confirm(purchase)

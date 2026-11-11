@@ -169,7 +169,8 @@ def test_agent_run_columns_view_and_ledger(price_box):
     assert run["units"] == 0 and run["cash_usd"] == 1000 * USD and run["spec_hash"] == "ab" * 32
     assert "rules_json" not in run and run["rules"]["max_trade"] == 1000 * USD
     started = ledger.entries(subject=f"run:{run['id']}")[0]
-    assert started["kind"] == "run.started" and started["data"]["version_id"] == "v_test000001"
+    assert started["kind"] == "run.started" and "version_id" not in started["data"]
+    assert "version_id" not in started["data"]["rules"] and started["data"]["spec_hash"] == "ab" * 32
 
 
 def test_track_purpose_is_allowed(price_box):

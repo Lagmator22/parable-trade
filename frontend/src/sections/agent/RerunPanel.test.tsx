@@ -45,3 +45,11 @@ test('the fetch-again option is sent as refetch and rate limits are explained', 
   expect(view.host.querySelector('[role=alert]')?.textContent).toContain('Too many re-runs');
   await view.unmount();
 });
+
+test('the counts only claim independent signed-in accounts', async () => {
+  const { counted } = await import('./RerunPanel');
+  const base = { reruns: { count: 2, matched: 2, anonymous: 3, by_seller: 1 } } as never;
+  expect(counted(base)).toBe('2 of 2 other signed-in accounts reproduced it exactly. 4 more re-runs by visitors or the seller are not counted.');
+  expect(counted({ reruns: { count: 0, matched: 0 } } as never)).toContain('No other signed-in account');
+  expect(counted({ reruns: { count: 0, matched: 0 }, verifiable: false } as never)).toContain('not counted as independent');
+});

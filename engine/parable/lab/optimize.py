@@ -1,13 +1,16 @@
 import itertools
 import math
 import random
+import time
 from typing import Callable
 
+from ..errors import LabError
 from ..models import StrategySpec
 from .backtest import quick_metrics
 from .consts import MAX_GRID, MIN_BARS, TRAIN_FRACTION
 from .spec import param_count, spec_hash, validate_spec
 
+DEADLINE_S = 25.0
 Progress = Callable[[float, str], None] | None
 
 
@@ -69,7 +72,10 @@ def optimize(spec: StrategySpec, bars: list, *, top_k: int = 5, progress: Progre
     combos, size = candidates(spec)
     report = progress or (lambda fraction, message: None)
     scored = []
+    deadline = time.monotonic() + DEADLINE_S
     for done, params in enumerate(combos):
+        if time.monotonic() > deadline:
+            raise LabError(408, "too_slow", "this search was too heavy and was stopped, use fewer or shorter indicators")
         scored.append((params, quick_metrics(spec, train, params)))
         if done % 10 == 0:
             report(0.9 * done / len(combos), f"trained {done}/{len(combos)}")
@@ -78,6 +84,8 @@ def optimize(spec: StrategySpec, bars: list, *, top_k: int = 5, progress: Progre
     order = _ranked(scored)[:max(1, top_k)]
     rows = []
     for rank, i in enumerate(order):
+        if time.monotonic() > deadline:
+            raise LabError(408, "too_slow", "this search was too heavy and was stopped, use fewer or shorter indicators")
         params, train_metrics = scored[i]
         test_metrics = quick_metrics(spec, test, params)
         rows.append({"params": params, "train": train_metrics, "test": test_metrics,

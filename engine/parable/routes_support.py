@@ -36,7 +36,7 @@ def visitor(request: Request, response: Response | None = None) -> str:
 
 
 def rate(who: str, bucket: str, limit: int, window_s: int = 60) -> None:
-    quota.limiter.hit(f"{bucket}:{who}", limit, window_s)
+    quota.hit_with_address(f"{bucket}:{who}", limit, window_s)
 
 
 def rate_lab(who: str) -> None:

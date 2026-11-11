@@ -10,7 +10,7 @@ from parable.errors import LabError, MarketError
 from parable.instant import finish_instant, refuse_self_purchase
 from parable.listings import listing_row
 from parable.live_symbols import require_live_symbol
-from parable.paypal import PayPalError, get_paypal
+from parable.paypal import PayPalError, get_paypal, is_mock
 from parable.settlement import load_purchase, purchase_lock, update_purchase
 
 log = logging.getLogger("parable.purchases")
@@ -47,7 +47,7 @@ def start_purchase(listing_id: str, buyer_id: str, via: str = "web") -> dict:
              order["id"], now, now, via))
         ledger.append("purchase.created", f"purchase:{purchase_id}", {
             "listing_id": listing_id, "mode": listing["mode"], "amount_cents": listing["price_cents"],
-            "fee_cents": fee, "via": via, "paypal_order_id": order["id"]})
+            "fee_cents": fee, "via": via})
     return {"purchase_id": purchase_id, "status": "created", "mode": listing["mode"],
             "paypal_order_id": order["id"], "approve_url": order["approve_url"]}
 
@@ -81,6 +81,12 @@ def confirm_hold(purchase: dict, listing: dict) -> None:
     order_id = purchase["paypal_order_id"]
     authorization = get_paypal().authorize_order(order_id)
     payer_id = authorization.get("payer_id") or ""
+    if not payer_id and not is_mock():
+        get_paypal().void_authorization(authorization["authorization_id"])
+        with DB_LOCK:
+            update_purchase(purchase["id"], status="cancelled")
+            ledger.append("purchase.cancelled", f"purchase:{purchase['id']}", {"reason": "payer_unknown"})
+        raise LabError(409, "payer_unknown", "PayPal did not say who paid, so this purchase was cancelled")
     if payer_id and payer_id == seller_payer_id(listing):
         get_paypal().void_authorization(authorization["authorization_id"])
         with DB_LOCK:
@@ -103,6 +109,8 @@ def confirm_instant(purchase: dict, listing: dict) -> None:
         raise PayPalError(422, "ORDER_NOT_APPROVED", "payer has not approved the order")
     payer = order.get("payer") or {}
     payer_id = payer.get("payer_id") or ""
+    if not payer_id and not is_mock():
+        raise PayPalError(422, "PAYER_UNKNOWN", "PayPal did not say who paid")
     if payer_id and payer_id == seller_payer_id(listing):
         refuse_self_purchase(purchase["id"])
     update_purchase(purchase["id"], buyer_payer_id=payer_id or None,

@@ -23,6 +23,14 @@ function Side({ title, view }: { title: string; view: RerunResult['claim'] }) {
   </div>;
 }
 
+export function counted(listing: PublicListing): string {
+  const r = listing.reruns;
+  if (listing.verifiable === false) return 'This uses data supplied by the creator, so a re-run only replays the same bars. It is not counted as independent.';
+  const base = r.count ? `${r.matched} of ${r.count} other signed-in accounts reproduced it exactly.` : 'No other signed-in account has re-run it yet.';
+  const skipped = (r.anonymous ?? 0) + (r.by_seller ?? 0);
+  return skipped ? `${base} ${skipped} more re-run${skipped === 1 ? '' : 's'} by visitors or the seller are not counted.` : base;
+}
+
 export function RerunPanel({ listing, onDone }: { listing: PublicListing; onDone?: () => void }) {
   const [result, setResult] = useState<RerunResult | null>(null);
   const [fresh, setFresh] = useState(false);
@@ -46,6 +54,7 @@ export function RerunPanel({ listing, onDone }: { listing: PublicListing; onDone
   return <section className="box agent-block" aria-label="Re-run the proof">
     <div className="box-head"><strong>Re-run the proof</strong><span>free, no key, nothing is trusted</span></div>
     <div className="block-body">
+      <p className="say" data-testid="rerun-counts">{counted(listing)}</p>
       <div className="actions">
         <Button variant="solid" disabled={busy} onClick={run}>{busy ? 'Running' : 'Re-run the proof'}</Button>
         {canRefetch && <label className="check"><input type="checkbox" checked={fresh} onChange={e => setFresh(e.target.checked)}/> Fetch the data again</label>}

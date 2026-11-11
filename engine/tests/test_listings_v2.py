@@ -12,7 +12,7 @@ from parable.models import NewListing
 
 def new_listing_for(owner, version_id, proof_id, **overrides):
     base = {"version_id": version_id, "title": "Second Agent", "pitch": "x", "price_cents": 1500, "mode": "hold",
-            "trial_s": 120, "min_return_bps": 0, "max_loss_bps": 500, "proof_id": proof_id}
+            "trial_s": 36000, "min_return_bps": 0, "max_loss_bps": 500, "proof_id": proof_id}
     return market.create_listing(owner["id"], NewListing(**{**base, **overrides}))
 
 
@@ -32,7 +32,7 @@ def test_create_listing_copies_proof_and_starts_a_track(manager):
     seller = make_seller()
     listing = make_listing(seller)
     assert listing["symbol"] == "fake:BTCUSDT" and listing["interval"] == "1h"
-    assert listing["trial_s"] == listing["probation_s"] == 120
+    assert listing["trial_s"] == listing["probation_s"] == 36000
     assert one("SELECT status FROM agents WHERE owner_id = ?", (seller["id"],))["status"] == "listed"
     track = referee.get_run(listing["track_run_id"])
     assert track["purpose"] == "track" and track["listing_id"] == listing["id"] and track["seller_id"] == seller["id"]
@@ -52,7 +52,7 @@ def test_public_view_is_an_allow_list_without_the_spec(manager):
     assert view["kind"] == "crypto" and view["data"]["symbol"] == "fake:BTCUSDT" and len(view["sparkline"]) <= 60
     assert view["proof"]["id"] == view["proof_id"] and "trades" not in view["proof"]
     assert view["track"]["quote"] == "USDT" and view["track"]["runs_total"] == 1
-    assert view["reruns"] == {"count": 0, "matched": 0} and view["built_by"] == "template:trend"
+    assert view["reruns"]["count"] == 0 and view["reruns"]["matched"] == 0 and view["built_by"] == "template:trend"
     assert view["recent_runs"][0]["purpose"] == "track" and "rules" not in view["recent_runs"][0]
 
 
@@ -135,9 +135,10 @@ def test_reruns_are_counted_publicly(manager):
     from parable import proofs
 
     listing = make_listing()
-    assert proofs.rerun_listing(listing["id"], "v_abcdef0123456789")["match"] is True
+    checker = make_seller("Checker", "checker@example.com")
+    assert proofs.rerun_listing(listing["id"], checker["id"])["match"] is True
     view = market.listing_summary(listing["id"])
-    assert view["reruns"] == {"count": 1, "matched": 1}
+    assert view["reruns"]["count"] == 1 and view["reruns"]["matched"] == 1
     detail = market.listing_detail(listing["id"])
     assert len(detail["proofs"]) == 1 and detail["proofs"][0]["kind"] == "rerun"
 
@@ -181,7 +182,7 @@ def test_routes_for_listings(seller_client, buyer_client, manager):
     seller = flow_seller()
     version, proof = make_proof(seller, "fake:BTCUSDT", "1h")
     body = {"version_id": version["id"], "title": "Route Agent", "pitch": "p", "price_cents": 2500, "mode": "hold",
-            "trial_s": 120, "min_return_bps": 0, "max_loss_bps": 500, "proof_id": proof["id"],
+            "trial_s": 36000, "min_return_bps": 0, "max_loss_bps": 500, "proof_id": proof["id"],
             "allow_test_drive": True}
     assert buyer_client.post("/api/listings", json=body).status_code == 403
     created = seller_client.post("/api/listings", json=body)

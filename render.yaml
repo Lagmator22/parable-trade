@@ -17,6 +17,12 @@ services:
         value: /var/data/parable.db
       - key: PAYPAL_ENV
         value: sandbox
+      - key: TRUST_PROXY
+        value: "1"
+      - key: PARABLE_ENV
+        value: production
+      - key: DEMO_PAYOUT_EMAIL
+        sync: false
       - key: PARABLE_MOCK_PAYPAL
         value: "0"
       - key: PARABLE_DEMO_SEED

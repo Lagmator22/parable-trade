@@ -29,8 +29,9 @@ def test_fallback_prefers_the_best_excess_return(market_of_three):
 def test_matched_reruns_lift_the_ranking(market_of_three):
     from parable import proofs
 
-    for _ in range(20):
-        proofs.rerun_listing(market_of_three["new"]["id"], "v_abcdef0123456789")
+    for number in range(20):
+        checker = make_seller(f"Checker {number}", f"checker{number}@example.com")
+        proofs.rerun_listing(market_of_three["new"]["id"], checker["id"])
     assert shopper.recommend("anything")["listing_id"] == market_of_three["new"]["id"]
 
 

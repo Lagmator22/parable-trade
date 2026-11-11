@@ -41,10 +41,12 @@ export type CurvePoint = [number, number, number];
 export type Trade = { entry_t: number; exit_t: number; entry_price: number; exit_price: number; qty: number; pnl: number; return_pct: number; bars_held: number; fees: number; reason: 'signal' | 'stop' | 'take_profit' | 'trailing' | 'end' };
 export type Marker = { t: number; side: 'buy' | 'sell'; price: number; text: string };
 export type BacktestResult = { metrics: Metrics; curve: CurvePoint[]; trades: Trade[]; markers: Marker[]; data: DataInfo; quote: string; start_cash: number; spec_hash: string; engine_version: string; result_hash: string };
+export type Assumptions = { fee_bps: number | null; slippage_bps: number | null };
 export type ProofView = {
   id: string; kind: ProofKind; spec_hash: string; symbol: string; interval: string; data: DataInfo; metrics: Metrics;
   curve: CurvePoint[]; trades_count: number; engine_version: string; result_hash: string; ledger_seq: number | null;
   matched: boolean | null; by: 'seller' | 'buyer' | 'visitor'; created_at: number;
+  assumptions?: Assumptions | null; verifiable?: boolean;
   trades?: Trade[]; markers?: Marker[]; version_id?: string;
 };
 export type StoredBacktest = ProofView & { trades: Trade[]; markers: Marker[] };
@@ -81,7 +83,8 @@ export type PublicListing = {
   min_return_bps: number; max_loss_bps: number; allow_test_drive: boolean; symbol: string; interval: string;
   quote: string; kind: AssetKind; active: boolean; created_at: number; built_by: string; spec_hash: string;
   headline: Headline; sparkline: CurvePoint[]; data: DataInfo; proof_id: string; track: Track | null;
-  reruns: { count: number; matched: number }; seller: { id: string; name: string; verified: boolean };
+  reruns: { count: number; matched: number; anonymous?: number; by_seller?: number; counted_accounts?: number };
+  assumptions?: Assumptions | null; verifiable?: boolean; data_note?: string; seller: { id: string; name: string; verified: boolean };
   seller_record: SellerRecord; stats: ListingStats;
 };
 export type ListingDetail = PublicListing & { proof: ProofView; benchmark: BenchmarkPublic | null; proofs: ProofView[]; recent_runs: Run[] };
@@ -109,7 +112,7 @@ export type License = {
 export type PurchaseView = {
   id: string; status: PurchaseStatus; mode: SaleMode; listing: PublicListing; amount_cents: number; fee_cents: number;
   payout_cents: number; paypal_order_id: string; paypal_authorization_id: string; paypal_capture_id: string;
-  paypal_payout_batch_id: string; payout_status: string; threshold: { min_return_bps: number; max_loss_bps: number };
+  paypal_payout_batch_id: string; payout_status: string; payout_waiting?: boolean; threshold: { min_return_bps: number; max_loss_bps: number };
   run: Run | null; verdict: Verdict | null; timeline: LedgerEntry[]; error: string; created_at: number; updated_at: number;
   license: License | null; approve_url?: string;
 };

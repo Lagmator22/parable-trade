@@ -8,6 +8,11 @@ import { clearDraft, loadDraft, saveDraft } from '../../aiSettings';
 export type Saved = { agentId: string; versionId: string; proofId: string; key: string };
 
 export const pickInterval = (intervals: string[]) => (intervals.includes('1h') ? '1h' : intervals.includes('1d') ? '1d' : intervals[0] ?? '1d');
+export function summaryOf(spec: StrategySpec, rules: RuleChip[]): string {
+  const edited = (spec.built_by ?? '').startsWith('manual');
+  const live = rules.filter(r => r.kind === 'entry' || r.kind === 'exit').map(r => r.text).join('. ');
+  return edited && live ? live : spec.summary;
+}
 export const uploadId = (symbol: string) => (symbol.startsWith('upload:') ? symbol.slice(7) : undefined);
 export const withMarket = (spec: StrategySpec, symbol: string, interval: string): StrategySpec => ({ ...spec, symbol, interval });
 

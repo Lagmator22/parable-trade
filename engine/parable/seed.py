@@ -1,12 +1,12 @@
 import logging
 
 from parable import agents, proofs
-from parable.config import get_settings
+from parable.config import get_settings, paypal_mode
 from parable.db import one
 from parable.identity import upsert_seller
 from parable.lab import markets
 from parable.lab.backtest import run_backtest
-from parable.lab.consts import MIN_BARS
+from parable.lab.consts import INTERVAL_SECONDS, MIN_BARS
 from parable.lab.templates import template_spec
 from parable.listings import create_listing
 from parable.models import NewListing
@@ -48,11 +48,19 @@ FAST_DEMO = {"seller": "priya", "asset": "btc", "template": "trend", "title": "F
                       "and capture-or-void cycle in two minutes."}
 
 BARS_WANTED = 1000
+MIN_TRIAL_S = 1800
+MAX_TRIAL_S = 259_200
 
 
 def seed_sellers() -> dict[str, dict]:
-    return {seller["key"]: upsert_seller("SEED-" + seller["key"].upper(), seller["name"], seller["email"], True)
+    payout = get_settings().demo_payout_email.strip()
+    return {seller["key"]: upsert_seller("SEED-" + seller["key"].upper(), seller["name"], payout or seller["email"],
+                                         True)
             for seller in SELLERS}
+
+
+def hold_trial_s(interval: str) -> int:
+    return min(MAX_TRIAL_S, max(MIN_TRIAL_S, 10 * INTERVAL_SECONDS[interval]))
 
 
 def fetch(symbol: str, interval: str) -> list | None:
@@ -106,7 +114,7 @@ def seed_regular(sellers: dict, online: bool) -> int:
         symbol, interval, bars = chosen
         live = not symbol.startswith("sample:")
         mode = "hold" if live and number % 2 == 0 else "instant"
-        seed_listing(sellers[spec["seller"]], spec, symbol, interval, bars, mode, 1800)
+        seed_listing(sellers[spec["seller"]], spec, symbol, interval, bars, mode, hold_trial_s(interval))
         created += 1
     return created
 
@@ -123,6 +131,9 @@ def seed_fast_demo(sellers: dict) -> int:
 
 
 def seed_demo() -> int:
+    if paypal_mode() == "live":
+        log.warning("demo seeding is skipped because PayPal is live")
+        return 0
     sellers = seed_sellers()
     online = markets_online()
     created = seed_regular(sellers, online)

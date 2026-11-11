@@ -12,11 +12,28 @@ from parable.lab.spec import load_spec, spec_hash
 from parable.models import StrategySpec
 
 KINDS = ("backtest", "rerun", "testdrive", "benchmark")
+KEEP_BACKTESTS_PER_VERSION = 20
+MAX_CHECKS_PER_LISTING_PER_DAY = 200
 
 
 def keep_bars(bars: list, digest: str) -> None:
     db.execute("INSERT OR IGNORE INTO bar_sets (data_hash, bars_json, created_at) VALUES (?, ?, ?)",
                (digest, json.dumps(bars, separators=(",", ":")), int(time.time())))
+
+
+def prune_backtests(version_id: str) -> None:
+    with db.DB_LOCK:
+        db.execute(
+            "DELETE FROM proofs WHERE version_id = ? AND kind = 'backtest' AND id NOT IN"
+            " (SELECT proof_id FROM listings WHERE proof_id IS NOT NULL) AND id NOT IN"
+            " (SELECT id FROM proofs WHERE version_id = ? AND kind = 'backtest' ORDER BY created_at DESC, id DESC"
+            " LIMIT ?)", (version_id, version_id, KEEP_BACKTESTS_PER_VERSION))
+        prune_bar_sets()
+
+
+def prune_bar_sets() -> None:
+    db.execute("DELETE FROM bar_sets WHERE data_hash NOT IN (SELECT data_hash FROM proofs WHERE data_hash IS NOT NULL)"
+               " AND data_hash NOT IN (SELECT data_hash FROM benchmarks WHERE data_hash IS NOT NULL)")
 
 
 def load_bars(digest: str) -> list | None:
@@ -71,6 +88,7 @@ def proof_view(row: dict, *, owner: bool) -> dict:
         "trades_count": row["trades_count"], "engine_version": row["engine_version"],
         "result_hash": row["result_hash"], "ledger_seq": row["ledger_seq"],
         "matched": None if matched is None else bool(matched), "by": by_of(row), "created_at": row["created_at"],
+        "assumptions": agents.version_assumptions(row["version_id"]), "verifiable": row["source_kind"] != "creator",
     }
     if owner:
         out.update(trades=json.loads(row["trades_json"]), markers=json.loads(row["markers_json"]),
@@ -101,8 +119,14 @@ def listing_checks(listing_id: str, limit: int = 50) -> list[dict]:
     return [proof_view(r, owner=False) for r in found]
 
 
-def rate_check(requester_id: str) -> None:
-    quota.limiter.hit(f"proofs:{requester_id}", get_settings().rate_proofs_per_hour, 3600)
+def rate_check(requester_id: str, listing_id: str | None = None) -> None:
+    quota.hit_with_address(f"proofs:{requester_id}", get_settings().rate_proofs_per_hour, 3600)
+    if listing_id is None:
+        return
+    today = db.one("SELECT COUNT(*) AS n FROM proofs WHERE listing_id = ? AND kind IN ('rerun', 'testdrive')"
+                   " AND created_at > ?", (listing_id, int(time.time()) - 86_400))
+    if today["n"] >= MAX_CHECKS_PER_LISTING_PER_DAY:
+        raise LabError(429, "rate_limited", "this agent was checked a lot today, try again tomorrow")
 
 
 def listing_row(listing_id: str) -> dict:
@@ -118,7 +142,7 @@ def diff_of(claim: dict, rerun: dict) -> dict:
 
 
 def rerun_listing(listing_id: str, requester_id: str, refetch: bool = False) -> dict:
-    rate_check(requester_id)
+    rate_check(requester_id, listing_id)
     listing = listing_row(listing_id)
     claim_row = proof_row(listing["proof_id"]) if listing["proof_id"] else None
     if claim_row is None:
@@ -141,7 +165,7 @@ def rerun_listing(listing_id: str, requester_id: str, refetch: bool = False) -> 
                           quote=claim_row["quote"], source_kind=claim_row["source_kind"])
     same = result["result_hash"] == claim_row["result_hash"]
     stored = store_proof("rerun", listing["version_id"], spec, result, listing_id=listing_id,
-                         requester_id=requester_id, claim_proof_id=claim_row["id"], matched=same, bars=bars)
+                         requester_id=requester_id, claim_proof_id=claim_row["id"], matched=same)
     claim = proof_view(claim_row, owner=False)
     rerun = proof_view(stored, owner=False)
     return {"match": same, "claim": claim, "rerun": rerun, "diff": diff_of(claim["metrics"], rerun["metrics"]),
@@ -150,7 +174,7 @@ def rerun_listing(listing_id: str, requester_id: str, refetch: bool = False) -> 
 
 def test_drive(listing_id: str, requester_id: str, symbol: str | None = None, interval: str | None = None,
                start: float | None = None, end: float | None = None) -> dict:
-    rate_check(requester_id)
+    rate_check(requester_id, listing_id)
     listing = listing_row(listing_id)
     if not listing["allow_test_drive"]:
         raise LabError(403, "test_drive_off", "the seller turned test drives off for this agent")
@@ -170,5 +194,5 @@ def test_drive(listing_id: str, requester_id: str, symbol: str | None = None, in
                           source_kind=markets.source_kind(symbol))
     stored = store_proof("testdrive", listing["version_id"], spec.model_copy(update={"symbol": symbol,
                          "interval": interval}), result, listing_id=listing_id, requester_id=requester_id,
-                         claim_proof_id=claim_row["id"] if claim_row else None, bars=bars)
+                         claim_proof_id=claim_row["id"] if claim_row else None)
     return {"proof": proof_view(stored, owner=False), "claim": proof_view(claim_row, owner=False) if claim_row else None}

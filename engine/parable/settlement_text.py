@@ -4,6 +4,8 @@ from parable import analyst, referee
 
 MIN_EXPLANATION = 20
 MAX_EXPLANATION = 300
+MIN_TRADES = 1
+MIN_BARS_SEEN = 3
 CONTRADICTIONS = {True: ("voided", "never charged"), False: ("captured", "paid out", "paid to")}
 
 
@@ -21,8 +23,13 @@ def duration(seconds: int) -> str:
 
 def build_verdict(run: dict, min_return_bps: int) -> dict:
     return_bps = referee.return_bps(run["start_cash_usd"], run["final_equity_usd"])
+    bars_seen = run.get("bars_seen") or 0
+    active_enough = run["trades"] >= MIN_TRADES and bars_seen >= MIN_BARS_SEEN
     return {
-        "passed": run["cause"] == "expired" and return_bps >= min_return_bps,
+        "passed": run["cause"] == "expired" and return_bps >= min_return_bps and active_enough,
+        "bars_seen": bars_seen,
+        "min_trades": MIN_TRADES,
+        "min_bars_seen": MIN_BARS_SEEN,
         "cause": run["cause"],
         "return_bps": return_bps,
         "min_return_bps": min_return_bps,
@@ -43,6 +50,12 @@ def template_explanation(verdict: dict, trial_s: int) -> str:
     if verdict["cause"] == "stopped":
         return (f"The run was stopped after {duration(verdict['lifetime_s'])}, before the trial finished, so the "
                 "payment was voided and the buyer was never charged.")
+    if verdict["cause"] == "expired" and verdict["trades"] < verdict["min_trades"]:
+        return ("The agent survived the trial but made no trades, so there was nothing to judge and the payment "
+                "was voided and the buyer was never charged.")
+    if verdict["cause"] == "expired" and verdict["bars_seen"] < verdict["min_bars_seen"]:
+        return ("The agent saw too few market bars during the trial for the result to count, so the payment was "
+                "voided and the buyer was never charged.")
     return (f"The agent survived the trial but returned {result}, below the promised minimum of {floor}, so the "
             "payment was voided and the buyer was never charged.")
 

@@ -58,7 +58,6 @@ def compact(listing: dict) -> dict:
     return {
         "id": listing["id"],
         "title": listing["title"],
-        "pitch": listing["pitch"][:200],
         "asset": listing["symbol"],
         "kind": listing["kind"],
         "data_badge": {"market": "market data", "sample": "sample data", "creator": "creator data"}.get(

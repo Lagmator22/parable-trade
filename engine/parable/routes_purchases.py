@@ -72,7 +72,7 @@ def run_purchase(purchase_id: str, options: RunRequest | None = None, buyer: dic
         buyer["id"], listing["version_id"], listing["symbol"], listing["interval"], "practice",
         f"{listing['title']} (my copy)", start_cash=cash, max_loss_bps=chosen.max_loss_bps,
         lease_seconds=chosen.lease_seconds, listing_id=listing["id"])
-    return public_run(run)
+    return public_run(run, buyer["id"])
 
 
 @router.get("/api/me/agents")

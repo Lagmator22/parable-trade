@@ -21,4 +21,4 @@ RUN useradd --create-home --uid 10001 parable \
     && chown -R parable:parable /var/data /app
 USER parable
 EXPOSE 10000
-CMD ["sh", "-c", "exec uvicorn parable.api:app --host 0.0.0.0 --port ${PORT:-10000} --proxy-headers --forwarded-allow-ips='*'"]
+CMD ["sh", "-c", "exec uvicorn parable.api:app --host 0.0.0.0 --port ${PORT:-10000} --no-proxy-headers"]

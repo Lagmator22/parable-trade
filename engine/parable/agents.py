@@ -185,3 +185,11 @@ def resolve_bars(account_id: str | None, symbol: str, interval: str, *, limit: i
                  dataset_id: str | None = None) -> tuple[list[list[float]], str]:
     data = resolve_data(account_id, symbol, interval, limit=limit, start=start, end=end, dataset_id=dataset_id)
     return data["bars"], data["source_kind"]
+
+
+def version_assumptions(version_id: str | None) -> dict | None:
+    found = db.one("SELECT spec_json FROM agent_versions WHERE id = ?", (version_id,)) if version_id else None
+    if found is None:
+        return None
+    spec = json.loads(found["spec_json"])
+    return {"fee_bps": spec.get("fee_bps"), "slippage_bps": spec.get("slippage_bps")}

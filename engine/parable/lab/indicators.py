@@ -1,15 +1,39 @@
 import math
+import operator
+from collections import deque
 
 Series = list
+EXACT_WINDOW = 32
 
 
-def _runs(src: Series, n: int, fn) -> Series:
-    out: Series = [None] * len(src)
-    run = 0
+def _segments(src: Series):
+    start = None
     for i, value in enumerate(src):
-        run = run + 1 if value is not None else 0
-        if run >= n:
-            out[i] = fn(src[i - n + 1:i + 1])
+        if value is None:
+            if start is not None:
+                yield start, i
+                start = None
+        elif start is None:
+            start = i
+    if start is not None:
+        yield start, len(src)
+
+
+def _slide(src: Series, n: int, anchor, advance, read) -> Series:
+    out: Series = [None] * len(src)
+    for a, b in _segments(src):
+        if b - a < n:
+            continue
+        state = anchor(src, a + n - 1)
+        out[a + n - 1] = read(state)
+        since = 0
+        for i in range(a + n, b):
+            since += 1
+            if n <= EXACT_WINDOW or since >= n:
+                state, since = anchor(src, i), 0
+            else:
+                state = advance(state, src[i], src[i - n])
+            out[i] = read(state)
     return out
 
 
@@ -35,7 +59,10 @@ def _smooth(src: Series, n: int, step) -> Series:
 
 
 def sma(src: Series, n: int) -> Series:
-    return _runs(src, n, lambda w: sum(w) / n)
+    if n == 1:
+        return list(src)
+    return _slide(src, n, lambda s, i: sum(s[i - n + 1:i + 1]), lambda total, new, old: total + new - old,
+                  lambda total: total / n)
 
 
 def ema(src: Series, n: int) -> Series:
@@ -86,11 +113,19 @@ def macd_signal(src: Series, fast: int, slow: int, signal: int) -> Series:
 
 
 def stddev(src: Series, n: int) -> Series:
-    def pop(w: list) -> float:
-        mean = sum(w) / n
-        return math.sqrt(sum([(x - mean) ** 2 for x in w]) / n)
+    def anchor(s: Series, i: int):
+        window = s[i - n + 1:i + 1]
+        mean = sum(window) / n
+        squares = sum([(x - mean) ** 2 for x in window])
+        return mean, 0.0, squares, math.sqrt(squares / n)
 
-    return _runs(src, n, pop)
+    def advance(state, new, old):
+        c, s1, s2, _ = state
+        s1 += (new - c) - (old - c)
+        s2 += (new - c) ** 2 - (old - c) ** 2
+        return c, s1, s2, math.sqrt(max(0.0, s2 / n - (s1 / n) ** 2))
+
+    return _slide(src, n, anchor, advance, lambda state: state[3])
 
 
 def _band(src: Series, n: int, k: float, sign: float) -> Series:
@@ -133,12 +168,27 @@ def roc(src: Series, n: int) -> Series:
     return out
 
 
+def _extreme(src: Series, n: int, better) -> Series:
+    out: Series = [None] * len(src)
+    for a, b in _segments(src):
+        window: deque = deque()
+        for i in range(a, b):
+            while window and better(src[i], src[window[-1]]):
+                window.pop()
+            window.append(i)
+            if window[0] <= i - n:
+                window.popleft()
+            if i - a + 1 >= n:
+                out[i] = src[window[0]]
+    return out
+
+
 def highest(src: Series, n: int) -> Series:
-    return _runs(src, n, max)
+    return _extreme(src, n, operator.ge)
 
 
 def lowest(src: Series, n: int) -> Series:
-    return _runs(src, n, min)
+    return _extreme(src, n, operator.le)
 
 
 def prev(src: Series, n: int = 1) -> Series:

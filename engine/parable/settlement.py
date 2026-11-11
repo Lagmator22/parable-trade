@@ -16,6 +16,7 @@ log = logging.getLogger("parable.settlement")
 LIVE_STATUSES = ("authorized", "probation")
 UNFINISHED_STATUSES = ("authorized", "probation", "passed", "failed")
 ERROR_LIMIT = 300
+PAYOUT_WAITING = ("PENDING", "PROCESSING", "UNCLAIMED", "ONHOLD")
 
 _locks: dict[str, threading.RLock] = {}
 _locks_guard = threading.Lock()

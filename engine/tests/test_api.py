@@ -16,7 +16,7 @@ def flow_seller() -> dict:
 
 
 def test_hold_pass_pays_the_seller_and_issues_a_license(seller_client, buyer_client, manager, wait_until):
-    listing = make_listing(flow_seller(), min_return_bps=-50)
+    listing = make_listing(flow_seller(), min_return_bps=0)
     started = buy_and_approve(buyer_client, listing["id"])
     live = buyer_client.get(f"/api/purchases/{started['purchase_id']}").json()
     assert live["status"] == "probation" and live["license"] is None and live["run"]["purpose"] == "probation"

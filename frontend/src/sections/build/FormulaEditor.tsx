@@ -1,7 +1,7 @@
 import type { StrategySpec } from '../../api';
 import { RuleChips } from '../../components/RuleChips';
 import { Slider } from './Slider';
-import type { Build } from './useBuild';
+import { summaryOf, type Build } from './useBuild';
 
 type Num = 'size_pct' | 'stop_loss_pct' | 'take_profit_pct' | 'trailing_stop_pct' | 'fee_bps' | 'slippage_bps';
 const RISK: { key: Num; label: string; min: number; max: number; step: number; unit: string }[] = [
@@ -19,7 +19,7 @@ export function FormulaEditor({ build, spec }: { build: Build; spec: StrategySpe
   const names = Object.keys(spec.params);
   return <div className="editor">
     <RuleChips rules={build.rules}/>
-    {spec.summary && <p className="say">{spec.summary}</p>}
+    {summaryOf(spec, build.rules) && <p className="say">{summaryOf(spec, build.rules)}</p>}
     <label className="field"><span className="field-label">Buy when</span>
       <textarea rows={2} value={spec.entry} spellCheck={false} onChange={e => set({ entry: e.target.value })}/></label>
     <label className="field"><span className="field-label">Sell when (empty = stops only)</span>

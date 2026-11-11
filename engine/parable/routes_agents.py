@@ -95,6 +95,7 @@ def backtest_version(agent_id: str, version_id: str, body: DataRequest, request:
                           data["bars"], symbol=data["symbol"], interval=data["interval"], quote=data["quote"],
                           source_kind=data["source_kind"])
     row = proofs.store_proof("backtest", version_id, spec, result, bars=data["bars"])
+    proofs.prune_backtests(version_id)
     return proofs.proof_view(row, owner=True)
 
 
@@ -110,7 +111,7 @@ def practice_run(agent_id: str, version_id: str, body: PracticeBody, request: Re
     run = runs.get_manager().start_for_version(owner, version_id, spec.symbol, spec.interval, "practice", spec.name,
                                                start_cash=cash, max_loss_bps=body.max_loss_bps,
                                                lease_seconds=body.lease_seconds)
-    return public_run(run)
+    return public_run(run, owner)
 
 
 @router.post("/api/agents/{agent_id}/benchmark")

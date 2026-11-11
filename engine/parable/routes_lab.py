@@ -1,3 +1,4 @@
+import re
 from dataclasses import asdict
 
 from fastapi import APIRouter, File, Form, Request, Response, UploadFile
@@ -16,6 +17,14 @@ router.include_router(ai_router)
 
 SEARCH_PER_MINUTE = 60
 MAX_CANDLES = 5000
+MARKET_PER_MINUTE = 60
+UPLOADS_PER_HOUR = 10
+SYMBOL_SHAPE = re.compile(r"[A-Za-z0-9_.:^=\-]{1,64}")
+
+
+def require_symbol_shape(symbol: str) -> None:
+    if not SYMBOL_SHAPE.fullmatch(symbol):
+        raise LabError(400, "bad_request", "that is not a valid symbol")
 
 
 class MapBody(BaseModel):
@@ -57,8 +66,10 @@ def search(request: Request, response: Response, q: str = "", kind: str = "all")
 
 
 @router.get("/api/markets/candles")
-def candles(request: Request, symbol: str, interval: str, limit: int = 500, start: float | None = None,
-            end: float | None = None):
+def candles(request: Request, response: Response, symbol: str, interval: str, limit: int = 500,
+            start: float | None = None, end: float | None = None):
+    rate(visitor(request, response), "market", MARKET_PER_MINUTE)
+    require_symbol_shape(symbol)
     if not 1 <= limit <= MAX_CANDLES:
         raise LabError(400, "bad_request", f"limit must be 1..{MAX_CANDLES}")
     account = signin(request) if symbol.startswith("upload:") else account_of(request)
@@ -68,7 +79,9 @@ def candles(request: Request, symbol: str, interval: str, limit: int = 500, star
 
 
 @router.get("/api/markets/latest")
-def latest(request: Request, symbol: str):
+def latest(request: Request, response: Response, symbol: str):
+    rate(visitor(request, response), "market", MARKET_PER_MINUTE)
+    require_symbol_shape(symbol)
     if symbol.startswith("upload:"):
         found = datasets.get_dataset(symbol.partition(":")[2], signin(request))
         last = found["bars"][-1]
@@ -80,6 +93,7 @@ def latest(request: Request, symbol: str):
 @router.post("/api/datasets")
 async def upload_dataset(request: Request, file: UploadFile = File(...), name: str = Form(""), quote: str = Form("USD")):
     owner = signin(request)
+    rate(owner, "upload", UPLOADS_PER_HOUR, 3600)
     limit = get_settings().upload_max_bytes
     content = await file.read(limit + 1)
     if len(content) > limit:
@@ -127,4 +141,4 @@ def delete_dataset(dataset_id: str, request: Request):
 
 @router.get("/api/jobs/{job_id}")
 def get_job(job_id: str, request: Request):
-    return jobs.get(job_id, visitor(request))
+    return jobs.get(job_id, signin(request))

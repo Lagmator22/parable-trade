@@ -29,7 +29,8 @@ Deadline: 12 Nov 2026, 12:00 PT. Do not start the Render deploy last.
    PAYPAL_CLIENT_ID=<paste Client ID>
    PAYPAL_CLIENT_SECRET=<paste Secret>
    PAYPAL_ENV=sandbox
-   SESSION_SECRET=<a long random text>
+   SESSION_SECRET=<a long random text, at least 32 characters>
+   PARABLE_ENV=production
    ```
    To make a random text, run this in any folder: `python3 -c "import secrets; print(secrets.token_hex(32))"`
 9. Never paste these values into chat, a screenshot, a commit or the video. `.env` is already in `.gitignore`.
@@ -193,7 +194,7 @@ Important: this folder has a remote called `ethglobal-local`. It points to your 
    - `PAYPAL_WEBHOOK_ID`: leave empty for now
    - `GEMINI_API_KEY`, `AUTOLOOPS_API_KEY`, `TWELVE_DATA_KEY`: from section E (leave empty to skip)
    - `GEMINI_MODELS`, `GEMMA_MODELS`, `ANTHROPIC_API_KEY`, `CLAUDE_MODELS`: optional
-   `SESSION_SECRET` is generated for you.
+   `SESSION_SECRET` is generated for you. `PARABLE_ENV=production` is set in `render.yaml`: the server refuses to start if PayPal keys are missing, the fake PayPal is on, `PRICE_SOURCE=sim`, or the secret is short. The seeded demo agents are never created while `PAYPAL_ENV=live`. To make demo sandbox payouts reach an account you own, set `DEMO_PAYOUT_EMAIL` to a sandbox account email.
 5. Click **Apply**. Wait until the service says **Live** (the first build takes a few minutes).
 
 ### H3. Set the public address in PayPal
@@ -228,3 +229,16 @@ Open https://devpost.com, find the PayPal AI Hackathon, click **Enter a submissi
 - [ ] The Render service is running and has been tested after the last deploy
 - [ ] README section "Screenshots" filled in or removed
 - [ ] Submit before 12 Nov 2026, 12:00 PT. After submitting, open the public project page and check every link in a private window.
+
+## Known security gaps (not fixed)
+
+These were found in the security audit and left open on purpose. Read them before opening the site to the public.
+
+- M3: refunds, disputes and chargebacks are not handled. Instant sales pay the seller at once. A dispute is only logged, the buyer keeps the license.
+- M4 and M5: a live track reveals its trades and equity curve while it runs, and the test-drive and re-run results act as a partial oracle for how an agent behaves. A free-rider can copy behaviour without paying.
+- M12: run exactly one process. Locks, rate limits, jobs, drafts and the secret fallback are in memory. The Dockerfile starts one worker. Do not raise the instance count above 1 on Render.
+- M15: sessions are stateless and last 7 days. Logout only deletes the cookie.
+- L7: payouts go to the email PayPal gave at sign-in. Verification of the email is not required to list an agent.
+- L9: the hash-chained ledger lives in the same SQLite file. Publish the head hash (shown on /api/info and the Ledger page) somewhere outside the server if you need outside proof.
+- Optimise and AI jobs run in threads, so a stuck job cannot be killed. The cost budget and the 25 second search limit keep them short.
+- Real PayPal behaviour (payer ids, email confirmation flags, payouts to unknown emails, the webhook verify call) was never tested offline.

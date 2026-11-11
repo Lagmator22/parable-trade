@@ -40,7 +40,8 @@ def test_proof_view_public_is_an_allow_list(fake_market):
     version, spec, row, _ = headline(owner, fake_market)
     public = proofs.proof_view(row, owner=False)
     assert set(public) == {"id", "kind", "spec_hash", "symbol", "interval", "data", "metrics", "curve", "trades_count",
-                           "engine_version", "result_hash", "ledger_seq", "matched", "by", "created_at"}
+                           "engine_version", "result_hash", "ledger_seq", "matched", "by", "created_at", "assumptions",
+                           "verifiable"}
     text = json.dumps(public)
     assert spec.entry not in text and spec.exit not in text and "trades" not in public.keys() - {"trades_count"}
     private = proofs.proof_view(row, owner=True)

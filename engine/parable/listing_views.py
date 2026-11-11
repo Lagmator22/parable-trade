@@ -1,6 +1,6 @@
 import json
 
-from parable import referee
+from parable import agents, referee
 from parable.db import one, rows
 from parable.lab import markets
 from parable.lab.backtest import downsample
@@ -17,20 +17,42 @@ MICRO = 1_000_000
 PRICE_SCALE = 10**8
 
 
-def asset_kind(symbol: str) -> str:
+def static_kind(symbol: str) -> str:
+    provider, _, code = str(symbol).partition(":")
+    if provider in ("binance", "fake"):
+        return "gold" if code == "PAXGUSDT" else "crypto"
+    if provider == "sample":
+        try:
+            found = markets.get_provider("sample").info(code)
+        except Exception:
+            found = None
+        return found.kind if found else "stocks"
+    return KIND_BY_PROVIDER.get(provider, "stocks")
+
+
+def asset_kind(symbol: str, stored: str | None = None) -> str:
+    return stored or static_kind(symbol)
+
+
+def resolve_kind(symbol: str) -> str:
     try:
         return markets.symbol_info(symbol).kind
     except Exception:
-        provider, _, code = str(symbol).partition(":")
-        if provider == "binance":
-            return "gold" if code == "PAXGUSDT" else "crypto"
-        return KIND_BY_PROVIDER.get(provider, "stocks")
+        return static_kind(symbol)
 
 
 def data_info(proof: dict) -> dict:
     return {"symbol": proof["symbol"], "interval": proof["interval"], "start": proof["start_t"],
             "end": proof["end_t"], "bars": proof["bars"], "data_hash": proof["data_hash"],
             "source_kind": proof["source_kind"], "quote": proof["quote"]}
+
+
+def data_note(source_kind: str | None) -> str:
+    if source_kind == "creator":
+        return "Supplied by the creator. Parable cannot check this data independently, so it cannot be re-run on fresh data."
+    if source_kind == "sample":
+        return "Bundled sample data, not a live market."
+    return ""
 
 
 def headline_of(metrics: dict) -> dict:
@@ -47,9 +69,20 @@ def unknown_seller(seller_id: str) -> dict:
 
 
 def rerun_counts(listing_id: str) -> dict:
-    found = one("SELECT COUNT(*) AS n, COALESCE(SUM(matched), 0) AS ok FROM proofs"
-                " WHERE listing_id = ? AND kind = 'rerun'", (listing_id,))
-    return {"count": found["n"], "matched": int(found["ok"])}
+    found = rows(
+        "SELECT p.requester_id, p.matched, p.source_kind, l.seller_id, s.id AS account FROM proofs p"
+        " JOIN listings l ON l.id = p.listing_id LEFT JOIN sellers s ON s.id = p.requester_id"
+        " WHERE p.listing_id = ? AND p.kind = 'rerun' ORDER BY p.created_at, p.id", (listing_id,))
+    latest, anonymous, by_seller = {}, 0, 0
+    for row in found:
+        if row["account"] is None:
+            anonymous += 1
+        elif row["account"] == row["seller_id"]:
+            by_seller += 1
+        elif row["source_kind"] != "creator":
+            latest[row["account"]] = bool(row["matched"])
+    return {"count": len(latest), "matched": sum(latest.values()), "anonymous": anonymous, "by_seller": by_seller,
+            "counted_accounts": len(latest)}
 
 
 def track_view(listing: dict) -> dict | None:
@@ -85,10 +118,12 @@ def public_view(row: dict, sellers: dict, totals: dict, records: dict) -> dict:
         "mode": row["mode"], "trial_s": row["trial_s"], "min_return_bps": row["min_return_bps"],
         "max_loss_bps": row["max_loss_bps"], "allow_test_drive": bool(row["allow_test_drive"]),
         "symbol": row["symbol"], "interval": row["interval"], "quote": proof.get("quote", ""),
-        "kind": asset_kind(row["symbol"]), "active": bool(row["active"]), "created_at": row["created_at"],
+        "kind": asset_kind(row["symbol"], row.get("kind")), "active": bool(row["active"]), "created_at": row["created_at"],
         "built_by": version.get("built_by", ""), "spec_hash": version.get("spec_hash", ""),
         "headline": headline_of(metrics), "sparkline": downsample(curve, SPARKLINE_MAX),
-        "data": data_info(proof) if proof else None, "proof_id": row["proof_id"], "track": track_view(row),
+        "data": data_info(proof) if proof else None,
+        "assumptions": agents.version_assumptions(row["version_id"]),
+        "verifiable": proof.get("source_kind") != "creator", "data_note": data_note(proof.get("source_kind")), "proof_id": row["proof_id"], "track": track_view(row),
         "reruns": rerun_counts(row["id"]), "seller": sellers.get(seller_id) or unknown_seller(seller_id),
         "seller_record": records[seller_id], "stats": {key: stats[key] for key in STAT_KEYS},
     }
@@ -127,7 +162,8 @@ def listing_detail(listing_id: str) -> dict:
 
 
 def recent_runs(listing_id: str) -> list[dict]:
-    found = rows("SELECT id FROM runs WHERE listing_id = ? ORDER BY id DESC LIMIT ?", (listing_id, DETAIL_RUNS))
+    found = rows("SELECT id FROM runs WHERE listing_id = ? AND purpose != 'practice' ORDER BY id DESC LIMIT ?",
+                 (listing_id, DETAIL_RUNS))
     return [referee.get_run(row["id"]) for row in found]
 
 

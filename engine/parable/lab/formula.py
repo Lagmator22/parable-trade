@@ -3,9 +3,9 @@ import math
 from dataclasses import dataclass
 
 from ..models import StrategySpec
-from .consts import MAX_AST_DEPTH, MAX_AST_NODES, MAX_FORMULA_LEN, MAX_PERIOD, MAX_POW
+from .consts import MAX_AST_DEPTH, MAX_BARS, MAX_AST_NODES, MAX_FORMULA_LEN, MAX_PERIOD, MAX_POW
 from .formula_defs import FORMULA_REFERENCE, FUNCS, MAX_CONSTANT, NAME_RE, RESERVED, SERIES, FormulaError
-from .formula_eval import run_formula, warm_up
+from .formula_eval import MAX_STEPS, run_formula, static_cost, warm_up
 
 __all__ = [
     "FORMULA_REFERENCE", "FormulaError", "Expr", "parse", "referenced_params",
@@ -182,3 +182,16 @@ def dry_run(spec: StrategySpec) -> None:
     for text in (spec.entry, spec.exit):
         if text.strip():
             evaluate(parse(text), columns, params)
+
+
+def check_cost(spec: StrategySpec) -> None:
+    total = 0
+    for text in (spec.entry, spec.exit):
+        if not text.strip():
+            continue
+        expr = parse(text)
+        periods = period_params(expr)
+        values = {name: float(p.max if name in periods else p.value) for name, p in spec.params.items()}
+        total += static_cost(expr.root, values, MAX_BARS)
+    if total > MAX_STEPS:
+        raise FormulaError("formula too expensive: use fewer or shorter indicators")

@@ -5,5 +5,23 @@ PUBLIC_RUN_KEYS = (
 )
 
 
-def public_run(run: dict) -> dict:
-    return {key: run.get(key) for key in PUBLIC_RUN_KEYS}
+HIDDEN_FOR_OTHERS = ("seller_id", "purchase_id")
+
+
+def public_run(run: dict, viewer_id: str | None = None) -> dict:
+    shown = {key: run.get(key) for key in PUBLIC_RUN_KEYS}
+    if run.get("purpose") != "track" and viewer_id != run.get("seller_id"):
+        for key in HIDDEN_FOR_OTHERS:
+            shown[key] = None
+    return shown
+
+
+def run_visible(run: dict, viewer_id: str | None) -> bool:
+    from parable.db import one
+
+    if viewer_id is not None and run.get("seller_id") == viewer_id:
+        return True
+    if run.get("purpose") not in ("track", "probation") or not run.get("listing_id"):
+        return False
+    listing = one("SELECT active FROM listings WHERE id = ?", (run["listing_id"],))
+    return bool(listing and listing["active"])

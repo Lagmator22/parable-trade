@@ -11,6 +11,7 @@ from parable.errors import LabError
 
 MAX_ZIP_ENTRIES = 200
 MAX_ZIP_BYTES = 50_000_000
+MAX_PART_BYTES = 8_000_000
 TEXT_EXTS = (".csv", ".tsv", ".txt")
 KNOWN_EXTS = TEXT_EXTS + (".json", ".xlsx", ".docx")
 DELIMITERS = (",", ";", "\t", "|")
@@ -59,7 +60,11 @@ def parse_delimited(text: str) -> ParsedTable:
     if not lines:
         raise bad("that file is empty")
     delimiter = max(DELIMITERS, key=lambda d: (sum(1 for ln in lines if d in ln), lines[0].count(d)))
-    parsed = [[c.strip() for c in row] for row in csv.reader(io.StringIO(text), delimiter=delimiter) if any(x.strip() for x in row)]
+    try:
+        parsed = [[c.strip() for c in row] for row in csv.reader(io.StringIO(text), delimiter=delimiter)
+                  if any(x.strip() for x in row)]
+    except csv.Error:
+        raise bad("that file could not be read as a table") from None
     return finish(parsed[0], parsed[1:])
 
 
@@ -88,18 +93,43 @@ def open_zip(content: bytes) -> zipfile.ZipFile:
     except zipfile.BadZipFile:
         raise bad("that file is not a valid spreadsheet or document") from None
     infos = archive.infolist()
-    if len(infos) > MAX_ZIP_ENTRIES or sum(i.file_size for i in infos) > MAX_ZIP_BYTES:
+    if (len(infos) > MAX_ZIP_ENTRIES or sum(i.file_size for i in infos) > MAX_ZIP_BYTES
+            or any(i.file_size > MAX_PART_BYTES for i in infos)):
         raise LabError(413, "too_large", "that archive is too large to open safely")
     return archive
 
 
-def read_xml(archive: zipfile.ZipFile, name: str):
+def read_part(archive: zipfile.ZipFile, name: str) -> bytes | None:
     try:
-        raw = archive.read(name)
+        info = archive.getinfo(name)
     except KeyError:
         return None
+    if info.file_size > MAX_PART_BYTES:
+        raise LabError(413, "too_large", "that file is too large to open safely")
+    with archive.open(info) as part:
+        raw = part.read(MAX_PART_BYTES + 1)
+    if len(raw) > MAX_PART_BYTES:
+        raise LabError(413, "too_large", "that file is too large to open safely")
+    return raw
+
+
+def read_xml_bytes(archive: zipfile.ZipFile, name: str) -> bytes | None:
+    raw = read_part(archive, name)
+    if raw is None:
+        return None
+    try:
+        raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise bad("that file contains unsupported XML") from None
     if b"<!DOCTYPE" in raw or b"<!ENTITY" in raw:
         raise bad("that file contains unsupported XML")
+    return raw
+
+
+def read_xml(archive: zipfile.ZipFile, name: str):
+    raw = read_xml_bytes(archive, name)
+    if raw is None:
+        return None
     try:
         return ElementTree.fromstring(raw)
     except ElementTree.ParseError:
@@ -114,24 +144,35 @@ def column_index(ref: str) -> int:
     return index - 1
 
 
+def cell_value(cell, shared: list[str]) -> str:
+    kind, value = cell.get("t"), cell.find(f"{NS_MAIN}v")
+    if kind == "inlineStr":
+        return "".join(t.text or "" for t in cell.iter(f"{NS_MAIN}t")).strip()
+    if value is None or value.text is None:
+        return ""
+    if kind == "s" and value.text.isdigit() and int(value.text) < len(shared):
+        return shared[int(value.text)].strip()
+    return value.text.strip()
+
+
 def sheet_rows(archive: zipfile.ZipFile, sheet: str, shared: list[str]) -> list[list[str]]:
-    root = read_xml(archive, sheet)
+    raw = read_xml_bytes(archive, sheet)
+    if raw is None:
+        return []
+    cap = get_settings().upload_max_rows + 2
     out = []
-    for row in root.iter(f"{NS_MAIN}row") if root is not None else []:
-        cells: dict[int, str] = {}
-        for cell in row.findall(f"{NS_MAIN}c"):
-            kind, value = cell.get("t"), cell.find(f"{NS_MAIN}v")
-            if kind == "inlineStr":
-                text = "".join(t.text or "" for t in cell.iter(f"{NS_MAIN}t"))
-            elif value is None or value.text is None:
-                text = ""
-            elif kind == "s" and value.text.isdigit() and int(value.text) < len(shared):
-                text = shared[int(value.text)]
-            else:
-                text = value.text
-            cells[column_index(cell.get("r", ""))] = text.strip()
-        if cells:
-            out.append([cells.get(i, "") for i in range(max(cells) + 1)])
+    try:
+        for _, row in ElementTree.iterparse(io.BytesIO(raw)):
+            if row.tag != f"{NS_MAIN}row":
+                continue
+            cells = {column_index(cell.get("r", "")): cell_value(cell, shared) for cell in row.findall(f"{NS_MAIN}c")}
+            row.clear()
+            if cells:
+                out.append([cells.get(i, "") for i in range(max(cells) + 1)])
+            if len(out) >= cap:
+                break
+    except ElementTree.ParseError:
+        raise bad("that file contains unreadable XML") from None
     return out
 
 

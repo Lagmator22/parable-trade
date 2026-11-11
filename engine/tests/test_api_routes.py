@@ -165,7 +165,7 @@ def test_webhook_router_is_mounted(client):
     sent = client.post("/paypal/webhook", json={"id": "WH-1", "event_type": "PAYMENT.CAPTURE.COMPLETED",
                                                 "resource": {"id": "CAP-1"}})
     assert sent.status_code == 200 and sent.json()["verified"] is False
-    assert client.get("/api/webhooks/recent").json()[0]["resource_id"] == "CAP-1"
+    assert client.get("/api/webhooks/recent").json() == []
 
 
 def test_error_handlers_map_exceptions_to_short_json(manager, tmp_path):

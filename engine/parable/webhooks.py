@@ -8,6 +8,7 @@ from fastapi import APIRouter, Request
 from fastapi.concurrency import run_in_threadpool
 
 from parable.config import get_settings
+from parable.lab import quota
 from parable.db import DB_LOCK, execute, one, rows
 from parable.paypal import get_paypal
 
@@ -30,6 +31,8 @@ HANDLED_EVENTS = frozenset(
 )
 MAX_BODY_BYTES = 256 * 1024
 RECENT_LIMIT = 20
+KEEP_UNVERIFIED = 500
+WEBHOOKS_PER_MINUTE = 60
 
 
 def resource_identifier(resource: dict) -> str:
@@ -77,10 +80,17 @@ def store_event(event_id: str, body: dict, resource: dict, verified: bool) -> bo
                 resource_identifier(resource),
                 int(verified),
                 int(time.time()),
-                json.dumps(body, sort_keys=True),
+                json.dumps(body, sort_keys=True) if verified else "",
             ),
         )
+        prune_unverified()
         return True
+
+
+def prune_unverified() -> None:
+    execute("DELETE FROM webhook_events WHERE verified = 0 AND rowid NOT IN"
+            " (SELECT rowid FROM webhook_events WHERE verified = 0 ORDER BY received_at DESC, rowid DESC LIMIT ?)",
+            (KEEP_UNVERIFIED,))
 
 
 def dispatch(event_type: str, resource: dict) -> None:
@@ -105,6 +115,7 @@ def process(raw: bytes, headers: dict) -> dict:
 
 @router.post("/paypal/webhook")
 async def receive_webhook(request: Request):
+    await run_in_threadpool(quota.hit_with_address, "webhook:all", WEBHOOKS_PER_MINUTE, 60)
     raw = await request.body()
     return await run_in_threadpool(process, raw, dict(request.headers))
 
@@ -113,7 +124,7 @@ async def receive_webhook(request: Request):
 def recent_webhooks():
     events = rows(
         "SELECT id, event_type, resource_id, verified, received_at FROM webhook_events"
-        " ORDER BY received_at DESC, rowid DESC LIMIT ?",
+        " WHERE verified = 1 ORDER BY received_at DESC, rowid DESC LIMIT ?",
         (RECENT_LIMIT,),
     )
     return [{**event, "verified": bool(event["verified"])} for event in events]

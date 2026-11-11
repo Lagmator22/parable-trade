@@ -9,7 +9,7 @@ from typing import Callable
 from fastapi import Request, Response
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from parable import db, identity
+from parable import db, guard, identity
 from parable.config import get_settings
 from parable.errors import LabError
 
@@ -17,6 +17,9 @@ COOKIE = "parable_vid"
 COOKIE_SALT = "vid"
 COOKIE_MAX_AGE = 365 * 24 * 3600
 MAX_KEYS = 10_000
+IP_FREE_FACTOR = 2
+IP_RATE_FACTOR = 3
+LLM_GLOBAL_PER_MINUTE = 120
 
 clock: Callable[[], float] = time.time
 
@@ -45,6 +48,10 @@ def cookie_visitor(request: Request) -> str | None:
     return value if isinstance(value, str) and value.startswith("v_") and len(value) == 18 else None
 
 
+def ip_visitor(address: str) -> str:
+    return "v_" + hashlib.sha256(address.encode()).hexdigest()[:16]
+
+
 def visitor_id(request: Request, response: Response | None = None) -> str:
     seller = identity.current_seller(request)
     if seller:
@@ -53,8 +60,7 @@ def visitor_id(request: Request, response: Response | None = None) -> str:
     if known:
         return known
     if response is None:
-        host = request.client.host if request.client else "unknown"
-        return "v_" + hashlib.sha256(host.encode()).hexdigest()[:16]
+        return ip_visitor(guard.client_ip.get())
     fresh = "v_" + secrets.token_hex(8)
     secure = get_settings().public_base_url.startswith("https://")
     response.set_cookie(COOKIE, serializer().dumps(fresh), max_age=COOKIE_MAX_AGE, httponly=True,
@@ -70,13 +76,16 @@ def free_tries(visitor: str) -> dict:
 
 
 def take_free_try(visitor: str) -> None:
+    address_key = "ip:" + ip_visitor(guard.client_ip.get())
     with db.DB_LOCK:
         state = free_tries(visitor)
-        if state["remaining"] <= 0:
+        address_state = free_tries(address_key)
+        if state["remaining"] <= 0 or address_state["used"] >= IP_FREE_FACTOR * state["limit"]:
             raise LabError(429, "free_tries_used", "you used today's free AI tries, add your own key to keep going",
                            {"free_tries": state})
-        db.execute("INSERT INTO ai_usage (visitor, day, n) VALUES (?, ?, 1) "
-                   "ON CONFLICT(visitor, day) DO UPDATE SET n = n + 1", (visitor, today()))
+        for key in (visitor, address_key):
+            db.execute("INSERT INTO ai_usage (visitor, day, n) VALUES (?, ?, 1) "
+                       "ON CONFLICT(visitor, day) DO UPDATE SET n = n + 1", (key, today()))
 
 
 class RateLimiter:
@@ -103,3 +112,12 @@ class RateLimiter:
 
 
 limiter = RateLimiter()
+
+
+def hit_with_address(key: str, limit: int, window_s: int) -> None:
+    limiter.hit(key, limit, window_s)
+    limiter.hit(f"ip:{guard.client_ip.get()}:{key.partition(':')[0]}", limit * IP_RATE_FACTOR, window_s)
+
+
+def hit_llm_budget() -> None:
+    limiter.hit("llm-global", LLM_GLOBAL_PER_MINUTE, 60)

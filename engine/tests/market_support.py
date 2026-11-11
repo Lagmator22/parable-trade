@@ -3,6 +3,7 @@ from parable import agents, market, proofs, referee, runs
 from parable.db import execute, one
 from parable.identity import upsert_seller
 from parable.lab import markets
+from parable.lab.consts import INTERVAL_SECONDS
 from parable.lab.backtest import run_backtest
 from parable.lab.templates import template_spec
 from parable.models import NewListing
@@ -38,11 +39,12 @@ def make_proof(owner: dict, symbol: str, interval: str, template: str = "trend",
 
 
 def make_listing(seller: dict | None = None, *, symbol: str = "fake:BTCUSDT", interval: str = "1h",
-                 mode: str = "hold", title: str = "Test Agent", price_cents: int = 2000, min_return_bps: int = -50,
-                 trial_s: int = 120, max_loss_bps: int = 1000, allow_test_drive: bool = True,
+                 mode: str = "hold", title: str = "Test Agent", price_cents: int = 2000, min_return_bps: int = 0,
+                 trial_s: int | None = None, max_loss_bps: int = 1000, allow_test_drive: bool = True,
                  template: str = "trend") -> dict:
     owner = seller or make_seller()
     version, proof = make_proof(owner, symbol, interval, template, title)
+    trial_s = trial_s if trial_s is not None else max(120, 10 * INTERVAL_SECONDS[interval])
     created = market.create_listing(owner["id"], NewListing(
         version_id=version["id"], title=title, pitch="A careful agent.", price_cents=price_cents, mode=mode,
         trial_s=trial_s, min_return_bps=min_return_bps, max_loss_bps=max_loss_bps, proof_id=proof["id"],
@@ -62,8 +64,9 @@ def approve_and_confirm(purchase: dict, payer_id: str = "MOCK-BUYER") -> dict:
     return market.confirm_approval(purchase["purchase_id"], purchase["paypal_order_id"])
 
 
-def expire_run(run_id: int) -> dict | None:
-    execute("UPDATE runs SET expires_at = 0 WHERE id = ?", (run_id,))
+def expire_run(run_id: int, trades: int = 1, bars_seen: int = 5) -> dict | None:
+    execute("UPDATE runs SET expires_at = 0, trades = MAX(trades, ?), bars_seen = MAX(bars_seen, ?) WHERE id = ?",
+            (trades, bars_seen, run_id))
     return referee.check(run_id)
 
 

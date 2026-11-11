@@ -201,6 +201,7 @@ NEW_COLUMNS = {
         "entry_price": "INTEGER DEFAULT 0",
         "high_water": "INTEGER DEFAULT 0",
         "last_bar_t": "INTEGER DEFAULT 0",
+        "bars_seen": "INTEGER DEFAULT 0",
     },
     "listings": {
         "version_id": "TEXT",
@@ -213,6 +214,7 @@ NEW_COLUMNS = {
         "symbol": "TEXT",
         "interval": "TEXT",
         "track_run_id": "INTEGER",
+        "kind": "TEXT",
     },
     "purchases": {
         "buyer_id": "TEXT",

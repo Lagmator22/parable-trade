@@ -216,11 +216,38 @@ def test_recent_lists_newest_first_and_caps_at_twenty(client, paypal, market_cal
 
 
 def test_recent_exposes_type_verified_resource_and_time_only(client, paypal, market_calls):
-    paypal.verdict = False
     post(client, capture_event())
     entry = client.get("/api/webhooks/recent").json()[0]
     assert set(entry) == {"id", "event_type", "resource_id", "verified", "received_at"}
-    assert entry["verified"] is False
+    assert entry["verified"] is True
     assert entry["event_type"] == "PAYMENT.CAPTURE.COMPLETED"
     assert entry["resource_id"] == "CAP-1"
     assert isinstance(entry["received_at"], int)
+
+
+def test_unverified_events_are_not_listed_and_keep_no_body(client, paypal, market_calls):
+    paypal.verdict = False
+    post(client, capture_event(resource={"id": "CAP-1", "payload": "x" * 5000}))
+    assert client.get("/api/webhooks/recent").json() == []
+    stored = rows("SELECT verified, body_json FROM webhook_events")
+    assert stored == [{"verified": 0, "body_json": ""}]
+
+
+def test_unverified_rows_are_pruned(client, paypal, market_calls, monkeypatch):
+    paypal.verdict = False
+    monkeypatch.setattr(webhooks, "KEEP_UNVERIFIED", 3)
+    for number in range(8):
+        post(client, capture_event(event_id=f"WH-{number}"))
+    assert len(rows("SELECT id FROM webhook_events")) == 3
+
+
+def test_real_client_skips_paypal_for_foreign_cert_urls():
+    from parable.paypal import PayPalClient, trusted_cert_url
+
+    assert trusted_cert_url("https://api.paypal.com/v1/notifications/certs/x")
+    assert not trusted_cert_url("https://evil.example.com/cert") and not trusted_cert_url("http://api.paypal.com/x")
+    client = PayPalClient("id", "secret", "sandbox", http=SimpleNamespace(request=lambda *a, **k: 1 / 0))
+    headers = {name: "x" for name in ("paypal-transmission-id", "paypal-transmission-time", "paypal-auth-algo",
+                                      "paypal-transmission-sig")}
+    headers["paypal-cert-url"] = "https://evil.example.com/cert"
+    assert client.verify_webhook(headers, {}, "WH") is False

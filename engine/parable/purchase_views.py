@@ -10,7 +10,7 @@ from parable.listing_views import listing_summary
 from parable.listings import listing_row
 from parable.paypal import get_paypal
 from parable.run_views import public_run
-from parable.settlement import load_purchase
+from parable.settlement import PAYOUT_WAITING, load_purchase
 
 TIMELINE_TRADES = 20
 TIMELINE_ENTRIES = 500
@@ -95,6 +95,7 @@ def purchase_view(purchase: dict) -> dict:
         "paypal_capture_id": mask_id(purchase["paypal_capture_id"]),
         "paypal_payout_batch_id": mask_id(purchase["paypal_payout_batch_id"]),
         "payout_status": purchase["payout_status"] or "",
+        "payout_waiting": (purchase["payout_status"] or "").upper() in PAYOUT_WAITING,
         "threshold": {"min_return_bps": listing["min_return_bps"], "max_loss_bps": listing["max_loss_bps"]},
         "run": public_run(run) if run else None, "verdict": verdict,
         "timeline": timeline_for(purchase["id"], purchase["run_id"]), "error": purchase["error"] or "",

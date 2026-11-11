@@ -165,7 +165,7 @@ def test_backtest_rate_limit(fake_market, monkeypatch):
 
 
 def test_optimize_job_flow_and_job_idor(fake_market, wait_until):
-    client, other = make_client(), make_client()
+    client, other = make_client(make_account("Ada")), make_client(make_account("Bob"))
     started = client.post("/api/lab/optimize", json={"spec": spec_dict(), "top_k": 3})
     assert started.status_code == 200
     job_id = started.json()["job_id"]
@@ -192,7 +192,7 @@ def test_optimize_publishes_partial_results(fake_market, monkeypatch):
         return real(*args, **kwargs)
 
     monkeypatch.setattr(opt, "quick_metrics", slow)
-    client = make_client()
+    client = make_client(make_account())
     job_id = client.post("/api/lab/optimize", json={"spec": spec_dict()}).json()["job_id"]
     import time
 
@@ -208,8 +208,13 @@ def test_optimize_publishes_partial_results(fake_market, monkeypatch):
     assert partial is not None and partial["result"]["evaluated"] >= 0 and "rows" in partial["result"]
 
 
+def test_optimize_needs_sign_in(fake_market):
+    assert make_client().post("/api/lab/optimize", json={"spec": spec_dict()}).status_code == 401
+    assert make_client().get("/api/jobs/j_anything00").status_code == 401
+
+
 def test_optimize_rate_limit_and_job_cap(fake_market):
-    client = make_client()
+    client = make_client(make_account())
     codes = [client.post("/api/lab/optimize", json={"spec": spec_dict()}).status_code for _ in range(7)]
     assert 429 in codes
 

@@ -50,7 +50,7 @@ __all__ = [
     "start_purchase",
 ]
 
-PAYOUT_FAILURES = ("DENIED", "FAILED", "UNCLAIMED", "RETURNED", "BLOCKED")
+PAYOUT_FAILURES = ("DENIED", "FAILED", "RETURNED", "BLOCKED")
 
 
 def install(manager: runs.RunManager) -> None:
@@ -120,6 +120,8 @@ def reconcile(purchase: dict, event_type: str, resource: dict) -> None:
             update_purchase(purchase["id"], payout_status=payout_status)
             if payout_status in PAYOUT_FAILURES:
                 update_purchase(purchase["id"], error=f"payout {payout_status.lower()}")
+            elif purchase["error"] and purchase["error"].startswith("payout "):
+                update_purchase(purchase["id"], error=None)
         elif event_type == "PAYMENT.CAPTURE.DENIED" and purchase["paypal_capture_id"] == resource.get("id"):
             update_purchase(purchase["id"], status="error", paypal_capture_id=None, error="capture denied by PayPal")
 

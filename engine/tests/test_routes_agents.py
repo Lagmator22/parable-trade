@@ -108,14 +108,18 @@ def test_practice_run_start_and_public_views(fake_market, pair):
     assert started.status_code == 200 and run["purpose"] == "practice" and run["status"] == "alive"
     assert run["start_cash_usd"] == 5000 * 10**6 and run["quote"] == "USDT" and run["symbol"] == SYMBOL
     assert "rules" not in run and "rules_json" not in run and "version_id" not in run
-    public = anon.get(f"/api/runs/{run['id']}").json()
-    assert "rules" not in public and "version_id" not in public and version["spec"]["entry"] not in json.dumps(public)
-    listed = anon.get("/api/runs").json()
+    assert anon.get(f"/api/runs/{run['id']}").status_code == 404
+    assert other.get(f"/api/runs/{run['id']}").status_code == 404
+    assert anon.get("/api/runs").json() == []
+    assert anon.get(f"/api/runs/{run['id']}/points").status_code == 404
+    mine = owner.get(f"/api/runs/{run['id']}").json()
+    assert "rules" not in mine and "version_id" not in mine and version["spec"]["entry"] not in json.dumps(mine)
+    listed = owner.get("/api/runs").json()
     assert listed and all("version_id" not in r and "rules" not in r for r in listed)
     assert other.post(path, json={}).status_code == 403
     assert anon.post(path, json={}).status_code == 401
     assert owner.post(path, json={"start_cash": -5}).status_code == 422
-    points = anon.get(f"/api/runs/{run['id']}/points").json()
+    points = owner.get(f"/api/runs/{run['id']}/points").json()
     assert points["run_id"] == run["id"] and points["quote"] == "USDT" and points["start_cash"] == 5000 * 10**6
     assert isinstance(points["points"], list)
     assert other.post(f"/api/runs/{run['id']}/stop").status_code == 403
