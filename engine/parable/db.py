@@ -183,6 +183,13 @@ CREATE TABLE IF NOT EXISTS ai_usage (
     n INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (visitor, day)
 );
+CREATE TABLE IF NOT EXISTS deals (
+    id TEXT PRIMARY KEY, client_id TEXT NOT NULL, title TEXT NOT NULL, brief TEXT NOT NULL,
+    checklist_json TEXT NOT NULL, amount_cents INTEGER NOT NULL, fee_cents INTEGER NOT NULL,
+    freelancer_email TEXT NOT NULL, share_token TEXT NOT NULL, status TEXT NOT NULL, paypal_order_id TEXT,
+    paypal_authorization_id TEXT, paypal_capture_id TEXT, paypal_payout_batch_id TEXT, payout_status TEXT,
+    work_text TEXT, work_url TEXT, attempts INTEGER NOT NULL DEFAULT 0, verdict_json TEXT,
+    built_by TEXT, error TEXT, created_at INTEGER, updated_at INTEGER);
 CREATE INDEX IF NOT EXISTS runs_seller ON runs(seller_id);
 CREATE INDEX IF NOT EXISTS runs_status ON runs(status);
 CREATE INDEX IF NOT EXISTS ledger_subject ON ledger(subject);
@@ -290,5 +297,4 @@ def one(sql: str, params: tuple = ()) -> dict | None:
 
 def execute(sql: str, params: tuple = ()) -> int:
     with DB_LOCK:
-        cursor = get_db().execute(sql, params)
-        return cursor.lastrowid
+        return get_db().execute(sql, params).lastrowid
