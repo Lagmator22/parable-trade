@@ -8,5 +8,6 @@ import './agent.css';
 import './purchase.css';
 import './ledger.css';
 import './sell.css';
+import './deals.css';
 
 createRoot(document.getElementById('root')!).render(<React.StrictMode><App /></React.StrictMode>);

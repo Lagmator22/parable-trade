@@ -7,6 +7,8 @@ import { useRoute } from './route';
 import { AgentPage } from './sections/AgentPage';
 import { BuildPage } from './sections/build/BuildPage';
 import { Checkout } from './sections/Checkout';
+import { DealPage } from './sections/deals/DealPage';
+import { DealsPage } from './sections/deals/DealsPage';
 import { Footer } from './sections/How';
 import { Ledger } from './sections/Ledger';
 import { MarketPage } from './sections/MarketPage';
@@ -39,6 +41,8 @@ export default function App() {
     <Topbar route={route} me={me.data} theme={theme} onToggleTheme={toggle} onLogout={signOut}/>
     <ModeBanner mode={info.data?.paypal_mode ?? me.data?.paypal_mode}/>
     <main>
+      {route.page === 'deals' && <DealsPage me={me.data} info={info.data}/>}
+      {route.page === 'deal' && <DealPage id={route.id} key={route.id} me={me.data} info={info.data}/>}
       {route.page === 'build' && <BuildPage key={route.id} agentId={route.id} me={me.data} info={info.data} onMe={me.reload}/>}
       {route.page === 'market' && <MarketPage onBuy={setBuying}/>}
       {route.page === 'agent' && <AgentPage id={route.id} key={route.id} me={me.data} onBuy={setBuying}/>}

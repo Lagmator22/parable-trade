@@ -1,0 +1,166 @@
+@keyframes item-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes tick-pop {
+  0% { opacity: 0.25; transform: scale(0.88); }
+  60% { opacity: 1; transform: scale(1.04); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes stamp-in {
+  0% { opacity: 0; transform: scale(1.18) rotate(-2deg); }
+  70% { opacity: 1; transform: scale(0.98) rotate(0deg); }
+  100% { opacity: 1; transform: scale(1) rotate(0deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 0 var(--orange); }
+  50% { transform: scale(1.14); box-shadow: 0 0 0 8px transparent; }
+}
+
+.deals-page, .deal-page { padding-top: 40px; padding-bottom: 64px; }
+.deals-hero h1 { font-size: clamp(40px, 6vw, 76px); font-weight: 900; letter-spacing: -0.045em; line-height: 0.95; }
+.deals-hero .lead { margin-top: 14px; font-size: 20px; max-width: 680px; }
+
+.deal-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip-btn { height: 34px; padding: 0 12px; border: 1px solid var(--ink); background: var(--paper); font: 500 13px var(--mono); cursor: pointer; }
+.chip-btn:hover { background: var(--ink); color: var(--paper); }
+
+.deals-form { padding: 20px 16px; display: flex; flex-direction: column; gap: 16px; }
+.deals-form-row { display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: 16px; }
+.deals-error { padding: 0 16px 16px; }
+
+.deals-checklist-panel { border-top: 1px solid var(--ink); }
+.deals-checklist-body { padding: 20px 16px; display: flex; flex-direction: column; gap: 16px; }
+.checklist-edit-list { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.checklist-edit-item {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--rule);
+  background: var(--paper);
+  animation: item-in 260ms ease-out both;
+}
+.checklist-text-input { min-height: 40px; padding: 6px 10px; border: 1px solid var(--ink); background: var(--card); font: 500 15px var(--head); width: 100%; }
+.checklist-value-input { width: 130px; min-height: 40px; padding: 6px 10px; border: 1px solid var(--ink); background: var(--card); font: 500 14px var(--mono); }
+
+.kind-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--ink);
+  font: 600 12px var(--mono);
+  background: var(--card);
+  white-space: nowrap;
+  cursor: pointer;
+}
+.kind-badge.kind-min_words, .kind-badge.kind-must_include { background: var(--ink); color: var(--paper); }
+
+.slim-market-card {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  text-decoration: none;
+  font-weight: 700;
+}
+.slim-market-card:hover { background: var(--hover); }
+
+.money-flow { padding: 20px; display: flex; flex-direction: column; gap: 20px; }
+.money-nodes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.money-node { padding: 14px 16px; border: 1px solid var(--rule); background: var(--paper); display: flex; flex-direction: column; gap: 4px; transition: border-color 300ms ease, background-color 300ms ease; }
+.money-node.active { border-color: var(--ink); background: var(--card); }
+.flow-released .node-freelancer.active { border-color: var(--green); background: var(--green-wash); }
+.flow-returned .node-client.active { border-color: var(--orange); background: var(--orange-wash); }
+.node-role { font: 11px var(--mono); color: var(--grey); }
+
+.money-track { position: relative; height: 52px; display: flex; align-items: center; padding: 0 24px; }
+.money-rail { width: 100%; height: 4px; background: var(--rule); position: relative; }
+.money-dot {
+  position: absolute;
+  top: 50%;
+  left: 16%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 2px solid var(--ink);
+  background: var(--card);
+  transition: left 600ms cubic-bezier(0.22, 1, 0.36, 1), border-color 300ms ease, background-color 300ms ease, color 300ms ease;
+}
+.money-dot-core { width: 12px; height: 12px; border-radius: 999px; background: var(--ink); }
+.money-dot.dot-held { left: 50%; border-color: var(--orange); background: var(--orange-wash); }
+.money-dot.dot-held .money-dot-core { background: var(--orange); animation: pulse 1.6s ease-in-out infinite; }
+.money-dot.dot-released { left: 84%; border-color: var(--green); background: var(--green-wash); color: var(--green); font-weight: 700; }
+.money-dot.dot-released .money-dot-core { background: var(--green); }
+.money-dot.dot-returned { left: 16%; border-color: var(--orange); background: var(--orange-wash); color: var(--orange-text); font-weight: 700; }
+.money-dot.dot-returned .money-dot-core { background: var(--orange); }
+
+.deal-box-body { padding: 20px 16px; display: flex; flex-direction: column; gap: 16px; }
+.share-url-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px; border: 1px solid var(--rule); background: var(--paper); }
+.share-url { font-size: 14px; overflow-wrap: anywhere; }
+.confirm-bar { padding: 12px; border: 1px solid var(--orange); background: var(--orange-wash); }
+.deal-brief { font-size: 16px; padding: 12px 14px; border-left: 3px solid var(--ink); background: var(--paper); }
+
+.deal-checklist-view { list-style: none; padding: 0; display: flex; flex-direction: column; }
+.deal-checklist-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 12px 16px; border-bottom: 1px solid var(--rule); }
+.deal-checklist-row:last-child { border-bottom: 0; }
+
+.check-run.passed { border-color: var(--green); }
+.check-run.failed { border-color: var(--orange); }
+.check-run-list { list-style: none; padding: 0; }
+.check-run-item {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--rule);
+  animation: tick-pop 340ms ease-out both;
+}
+.check-mark {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  font: 900 18px var(--mono);
+  border: 1px solid var(--rule);
+}
+.check-mark.tick { border-color: var(--green); background: var(--green-wash); color: var(--green); }
+.check-mark.cross { border-color: var(--orange); background: var(--orange-wash); color: var(--orange-text); }
+
+.deal-stamp {
+  margin: 16px;
+  padding: 16px 20px;
+  font: 900 clamp(22px, 4vw, 34px)/1.1 var(--head);
+  letter-spacing: -0.02em;
+  text-align: center;
+  border: 2px solid var(--ink);
+  animation: stamp-in 380ms ease-out both;
+}
+.deal-stamp.stamp-good { border-color: var(--green); background: var(--green-wash); color: var(--green); }
+.deal-stamp.stamp-bad { border-color: var(--orange); background: var(--orange-wash); color: var(--orange-text); }
+
+@media (max-width: 640px) {
+  .deals-form-row { grid-template-columns: 1fr; }
+  .checklist-edit-item { grid-template-columns: 1fr; }
+  .checklist-value-input { width: 100%; }
+  .money-nodes { grid-template-columns: 1fr; }
+  .money-track { padding: 0 12px; }
+  .money-dot.dot-draft, .money-dot.dot-returned { left: 22%; }
+  .money-dot.dot-released { left: 78%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .checklist-edit-item, .check-run-item, .deal-stamp, .money-dot-core { animation: none !important; }
+  .money-dot, .money-node { transition: none !important; }
+}

@@ -8,7 +8,8 @@ import type { Route } from '../route';
 import type { Theme } from '../hooks/useTheme';
 
 const NAV: [string, string, Route['page'][]][] = [
-  ['Market', '#market', ['market']],
+  ['Deals', '#deals', ['deals', 'deal']],
+  ['Trading agents', '#market', ['market']],
   ['Build', '#build', ['build']],
   ['My agents', '#mine', ['mine', 'agent']],
   ['Purchases', '#purchases', ['purchases', 'purchase']],
@@ -23,7 +24,7 @@ export function Topbar({ route, me, theme, onToggleTheme, onLogout }: Props) {
   const tries = me?.free_tries;
   return <header className="topbar">
     <div className="wrap">
-      <a className="brand" href="#market"><Tomb size={24}/>PARABLE</a>
+      <a className="brand" href="#deals"><Tomb size={24}/>PARABLE</a>
       <nav aria-label="Sections">
         {NAV.map(([label, href, pages]) => <a key={href} href={href} aria-current={pages.includes(route.page) ? 'page' : undefined}>{label}</a>)}
       </nav>
