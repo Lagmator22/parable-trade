@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Info, Me } from '../../api';
 import { Button } from '../../components/ui/Button';
-import {
-  fetchDeal, fundDeal, orderDeal, refundDeal, releaseDeal, submitWork,
-  type ChecklistKind, type Deal, type DealEvent, type DealStatus, type Verdict,
-} from '../../dealsApi';
+import { fetchDeal, fundDeal, orderDeal, refundDeal, releaseDeal, submitWork, type ChecklistKind, type Deal, type DealEvent, type DealStatus, type Verdict } from '../../dealsApi';
 import { cents, clockTime, shortHash } from '../../format';
 import { usePoll } from '../../hooks/usePoll';
 import { loadPayPalSdk } from '../../paypalSdk';
@@ -15,6 +12,7 @@ type Props = { id: string; me: Me | null; info: Info | null };
 type StepState = 'done' | 'now' | 'todo' | 'bad';
 
 const STEP_LABELS = ['Agent built', 'Money held', 'Work submitted', 'Agent check', 'Money moved'];
+const CHECK_STAGES = ['Sending work', 'Running rule checks', 'Asking AI reviewer', 'Settling with PayPal'];
 const KIND_BADGE: Record<ChecklistKind, string> = { ai: 'AI check', min_words: 'Min words', must_include: 'Must include' };
 const EVENT_NAMES: Record<string, string> = {
   'deal.created': 'Agent checklist created', 'deal.funded': 'Money held by PayPal',
@@ -22,13 +20,27 @@ const EVENT_NAMES: Record<string, string> = {
   'deal.released': 'PayPal captured and paid freelancer', 'deal.returned': 'PayPal voided hold and returned money',
 };
 
+function sampleDelivery(deal: Deal, pass: boolean): string {
+  if (!pass) return 'Initial rough note: still drafting the main section.';
+  const phrases = deal.checklist.filter(i => i.kind === 'must_include' && i.value).map(i => String(i.value));
+  const minW = Math.max(45, ...deal.checklist.filter(i => i.kind === 'min_words').map(i => Number(i.value) || 0));
+  const core = [
+    `Final delivery for "${deal.title}".`, deal.brief ? `Addressing the brief directly: ${deal.brief}` : '',
+    'Our PayPal checkout flow protects buyers by placing an authorization hold on funds first, verifying every acceptance requirement automatically, and only capturing payment once the delivered work passes inspection.',
+    'For brand systems we use a deep obsidian primary palette (#0B0F17) with emerald verification accents, Inter and JetBrains Mono typography scales, a strict 24px icon grid, and a clean monochrome mark for small surfaces.',
+    'For webhook reliability, the idempotency lock serializes concurrent retries per deal and stores capture_id in SQLite before initiating payout so duplicate deliveries never double-capture or double-pay.',
+    phrases.length ? `Required verification terms included verbatim: ${phrases.join(', ')}.` : '',
+  ].filter(Boolean).join(' ');
+  const words = core.split(/\s+/);
+  return words.length >= minW ? core : `${core} ${Array(minW - words.length + 5).fill('verified').join(' ')}`;
+}
+
 function stepStates(status: DealStatus, verdict: Verdict | null): StepState[] {
   if (status === 'draft') return ['done', 'now', 'todo', 'todo', 'todo'];
   if (status === 'funded') return ['done', 'done', 'now', 'todo', 'todo'];
   if (status === 'submitted') return ['done', 'done', 'done', verdict && !verdict.passed ? 'bad' : 'now', 'todo'];
   if (status === 'released') return ['done', 'done', 'done', 'done', 'done'];
-  if (status === 'returned') return ['done', 'done', 'todo', 'todo', 'bad'];
-  return ['done', 'done', 'done', 'done', 'bad'];
+  return status === 'returned' ? ['done', 'done', 'todo', 'todo', 'bad'] : ['done', 'done', 'done', 'done', 'bad'];
 }
 
 function CheckRun({ verdict, payoutCents, attempt }: { verdict: Verdict; payoutCents: number; attempt: number }) {
@@ -52,15 +64,13 @@ function DealTimeline({ events }: { events: DealEvent[] }) {
   return <div className="box deal-timeline">
     <div className="box-head"><strong>Deal ledger</strong><a className="out-link" href="#ledger">Verify the ledger →</a></div>
     {events.length === 0 ? <p className="empty">No ledger events yet.</p> : (
-      <div className="receipts">
-        {events.map(ev => (
-          <div key={ev.seq} className="row receipt">
-            <time className="mono muted">{clockTime(ev.at)}</time>
-            <span>{EVENT_NAMES[ev.kind] ?? ev.kind}</span>
-            <span className="mono muted">#{ev.seq} {shortHash(ev.hash, 8)}</span>
-          </div>
-        ))}
-      </div>
+      <div className="receipts">{events.map(ev => (
+        <div key={ev.seq} className="row receipt">
+          <time className="mono muted">{clockTime(ev.at)}</time>
+          <span>{EVENT_NAMES[ev.kind] ?? ev.kind}</span>
+          <span className="mono muted">#{ev.seq} {shortHash(ev.hash, 8)}</span>
+        </div>
+      ))}</div>
     )}
   </div>;
 }
@@ -69,7 +79,6 @@ export function DealPage({ id, info }: Props) {
   const dot = id.indexOf('.');
   const dealId = dot === -1 ? id : id.slice(0, dot);
   const urlToken = dot === -1 ? '' : id.slice(dot + 1);
-
   const [override, setOverride] = useState<Deal | null>(null);
   const [workText, setWorkText] = useState('');
   const [workUrl, setWorkUrl] = useState('');
@@ -81,10 +90,8 @@ export function DealPage({ id, info }: Props) {
   const paypalHost = useRef<HTMLDivElement>(null);
 
   const polled = usePoll(() => fetchDeal(dealId, urlToken || undefined), {
-    every: 2000, deps: [dealId, urlToken],
-    stopWhen: d => d.status === 'released' || d.status === 'returned',
+    every: 2000, deps: [dealId, urlToken], stopWhen: d => d.status === 'released' || d.status === 'returned',
   });
-
   useEffect(() => { setOverride(null); }, [id]);
 
   const deal = override && (!polled.data || override.updated_at >= polled.data.updated_at) ? override : polled.data;
@@ -104,10 +111,7 @@ export function DealPage({ id, info }: Props) {
         return paypal.Buttons({
           style: { layout: 'vertical', shape: 'rect', label: 'pay' },
           createOrder: async () => (await orderDeal(dealId)).paypal_order_id,
-          onApprove: async data => {
-            const funded = await fundDeal(dealId, data.orderID);
-            if (!cancelled) setOverride(funded);
-          },
+          onApprove: async data => { const f = await fundDeal(dealId, data.orderID); if (!cancelled) setOverride(f); },
           onCancel: () => setActionError('PayPal checkout was cancelled.'),
           onError: () => setActionError('PayPal could not complete authorization.'),
         }).render(host).then(() => { if (!cancelled) setSdkReady(true); });
@@ -117,10 +121,8 @@ export function DealPage({ id, info }: Props) {
   }, [deal?.status, isClient, mocked, info?.paypal_client_id, dealId]);
 
   if (!deal) {
-    return <section className="wrap page">
-      <a className="out-link" href="#deals">← Deals</a>
-      {polled.error ? <p className="say bad" role="alert">{polled.error}</p> : <p className="say">Loading deal…</p>}
-    </section>;
+    return <section className="wrap page"><a className="out-link" href="#deals">← Deals</a>
+      {polled.error ? <p className="say bad" role="alert">{polled.error}</p> : <p className="say">Loading deal…</p>}</section>;
   }
 
   const states = stepStates(deal.status, deal.verdict);
@@ -130,27 +132,19 @@ export function DealPage({ id, info }: Props) {
   const canSubmit = (deal.status === 'funded' || deal.status === 'submitted') && deal.attempts_left > 0;
 
   async function runAction(task: () => Promise<Deal>) {
-    setBusy(true);
-    setActionError('');
-    try {
-      setOverride(await task());
-      setConfirmAction(null);
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Action failed.');
-    } finally {
-      setBusy(false);
-    }
+    setBusy(true); setActionError('');
+    try { setOverride(await task()); setConfirmAction(null); }
+    catch (err) { setActionError(err instanceof Error ? err.message : 'Action failed.'); }
+    finally { setBusy(false); }
   }
 
   function copyLink() {
     navigator.clipboard?.writeText(shareUrl).catch(() => undefined);
-    setCopied(true);
-    window.setTimeout(() => setCopied(false), 2000);
+    setCopied(true); window.setTimeout(() => setCopied(false), 2000);
   }
 
   return <section className="wrap page stack deal-page">
     <a className="out-link" href="#deals">← Deals</a>
-
     <div className="purchase-head">
       <div>
         <h1 className="page-title">{deal.title}</h1>
@@ -249,11 +243,17 @@ export function DealPage({ id, info }: Props) {
           </ul>
           {canSubmit && (
             <div className="deals-form">
-              <label className="field">
-                <span className="field-label">Your delivered work</span>
+              <div className="field">
+                <div className="box-head" style={{ padding: 0, border: 0 }}>
+                  <span className="field-label">Your delivered work</span>
+                  <div className="deal-presets" role="group" aria-label="Sample deliveries">
+                    <button type="button" className="chip-btn" onClick={() => setWorkText(sampleDelivery(deal, false))}>Try failing draft</button>
+                    <button type="button" className="chip-btn" onClick={() => setWorkText(sampleDelivery(deal, true))}>Fill passing work</button>
+                  </div>
+                </div>
                 <textarea rows={6} aria-label="Delivered work" value={workText} onChange={e => setWorkText(e.target.value)}
                   placeholder="Paste the finished work here for the agent to check..."/>
-              </label>
+              </div>
               <label className="field">
                 <span className="field-label">Optional link (https://)</span>
                 <input type="url" aria-label="Optional link" value={workUrl} onChange={e => setWorkUrl(e.target.value)} placeholder="https://..."/>
@@ -264,6 +264,13 @@ export function DealPage({ id, info }: Props) {
                   {busy ? 'Checking work…' : 'Submit work'}
                 </Button>
               </div>
+              {busy && (
+                <ol className="steps n4 check-live-strip" aria-label="Verification in progress">
+                  {CHECK_STAGES.map((stage, idx) => (
+                    <li key={stage} className="now" style={{ animationDelay: `${idx * 250}ms` }}><span>{idx + 1} · Live</span>{stage}</li>
+                  ))}
+                </ol>
+              )}
             </div>
           )}
         </div>
@@ -286,9 +293,7 @@ export function DealPage({ id, info }: Props) {
     )}
 
     {deal.verdict && <CheckRun verdict={deal.verdict} payoutCents={deal.payout_cents} attempt={deal.attempts}/>}
-
     {(deal.error || actionError) && <p className="say bad" role="alert">{actionError || deal.error}</p>}
-
     <DealTimeline events={deal.timeline ?? []}/>
   </section>;
 }

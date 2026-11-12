@@ -6,6 +6,7 @@ import { AiKeyDialog } from '../components/AiKeyDialog';
 import { Tomb } from '../components/ui/Glyphs';
 import type { Route } from '../route';
 import type { Theme } from '../hooks/useTheme';
+import { rememberReturn } from '../signIn';
 
 const NAV: [string, string, Route['page'][]][] = [
   ['Deals', '#deals', ['deals', 'deal']],
@@ -42,7 +43,7 @@ export function Topbar({ route, me, theme, onToggleTheme, onLogout }: Props) {
 
 function Account({ me, onLogout }: { me: Me | null; onLogout: () => void }) {
   if (!me) return null;
-  if (!me.seller) return <a className="signin" href="/paypal/login">Sign in with PayPal</a>;
+  if (!me.seller) return <a className="signin" href="/paypal/login" onClick={() => rememberReturn(window.location.hash || '#deals')}>Sign in with PayPal</a>;
   return <div className="account">
     <a href="#mine" className="account-name">{me.seller.name}</a>
     <button type="button" className="link-btn" onClick={onLogout}>Sign out</button>
