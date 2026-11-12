@@ -8,17 +8,25 @@ Parable
 
 ## Tagline (under 200 characters)
 
-Build a trading agent from a plain sentence, prove it with a result any buyer can re-run exactly, and sell it with PayPal: money held until it passes, or paid at once.
+Pay when the work passes: AI turns a job brief into an acceptance checklist, PayPal holds the money, the agent checks delivered work live, and PayPal pays the freelancer or returns the funds.
 
 ## Inspiration
 
-Anyone can show a great-looking backtest. A backtest means "pretend to trade on old prices". Sellers can pick the best dates, hide failed runs, or invent numbers, and buyers have no way to check. That is how trading-bot scams work.
+Clients hate paying upfront for freelance work that misses the brief. Freelancers hate delivering work and chasing invoices. Traditional escrow takes days of manual arbitration. What if an AI agent turned the client's brief into a concrete checklist upfront, PayPal held the funds with `AUTHORIZE`, and the moment the freelancer submitted work, the agent verified every check and triggered PayPal `capture_authorization` + `create_payout` (or `void_authorization` on cancellation)?
 
-Parable started as an ETHGlobal Mumbai 2026 project about AI trading bots that could not hide their failed runs. For the PayPal hackathon we asked a simpler question: what if the buyer could check the numbers in one click, and what if the money did not move until the agent had earned it? PayPal can hold a payment and then capture it or void it. That fits the idea well.
+We also applied the exact same "pay only when verified" pattern to a second vertical — trading agents — where anyone can show a fake backtest, so Parable lets buyers re-run the proof deterministically and holds payment in PayPal until a live paper trial passes.
 
 ## What it does
 
-Parable is an agent workshop and a marketplace.
+### 1. Parable Deals — "Pay when the work passes" (Lead product)
+- **Build the checklist agent.** A client types a job brief, sets a price in USD, and enters the freelancer's PayPal email. AI turns the brief into 2–8 checkable acceptance criteria (`AI check`, `Min words`, `Must include`). The client can edit, add, or remove items.
+- **Hold with PayPal.** Parable creates a PayPal Order v2 (`intent="AUTHORIZE"`) and authorizes the hold. Money moves into PayPal hold (`HELD $X` on the live `MoneyFlow` track).
+- **Deliver and verify live.** The freelancer opens their tokenized link (`/#deal/<id>.<token>`) and submits work (up to 3 attempts). Code deterministically checks `min_words` and `must_include` rules; AI checks `ai` criteria while treating the submission as untrusted data. Each item flips one by one to a green tick or orange cross with evidence.
+- **Settle with PayPal.** When all checks pass, Parable captures the authorization (storing `capture_id` before payout so retries never double-capture) and sends the net payout to the freelancer via PayPal Payouts (`PAID $X`). The client can also override (`Release anyway`) or cancel (`Cancel and return money` → `void_authorization`).
+- **Hash-chained ledger.** Every deal event is appended to the SHA-256 hash-chained ledger without leaking emails, briefs, work text, or PayPal IDs.
+
+### 2. Second vertical — Trading Agents ("Pay if proven")
+Parable is also an agent workshop and marketplace for paper-trading strategies.
 
 - **Build.** You write your steps in plain words. An AI model (OpenAI, Gemini or Claude with your own key, or free platform models, or the Jev models) turns them into a small set of rules in a safe formula language. You can also start from a template or edit the formulas.
 - **Test.** Backtest on real prices with fees and slippage. "Find best" tunes settings on 70% of the data and checks on the other 30%, and marks overfit results. "Replay" animates the backtest. "Go live" runs the agent on real prices with paper money.

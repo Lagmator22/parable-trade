@@ -1,12 +1,44 @@
 # Parable
 
-**Build a trading agent from a plain sentence, prove it with a result anyone can re-run, and sell it with PayPal.**
-
-Parable is an agent workshop and a marketplace. Creators build and test agents. Buyers check the proof themselves, pay with PayPal, then run or download the agent. It is paper trading only. No real orders are ever placed.
+**Pay when the work passes. PayPal holds the money, an AI agent checks the work, and then PayPal pays the freelancer or returns the money — plus a second vertical for verifiable trading agents.**
 
 Built for the PayPal AI Hackathon (Devpost). License: MIT.
 
-## The problem
+## 1. Parable Deals — "Pay when the work passes"
+
+Freelancers worry about doing the work and not getting paid. Clients worry about paying upfront for work that misses the brief. Parable Deals turns the job brief into a concrete checklist, holds the money in PayPal, checks the delivered work against the checklist, and releases or returns the funds automatically.
+
+### What it does
+1. **Describe the job.** The client writes a plain-English brief, sets a price in USD, and enters the freelancer's PayPal email.
+2. **Build the agent.** An AI model turns the brief into 2 to 8 checkable acceptance items (`AI check`, `Min words`, or `Must include`). The client can edit, add, or remove checks before creating the deal.
+3. **Hold with PayPal.** Parable creates a PayPal Order v2 with `intent="AUTHORIZE"` and authorizes the payment (`authorize_order`). Money is held by PayPal, not charged yet.
+4. **Deliver work.** The client shares a tokenized freelancer link (`/#deal/<id>.<token>`). The freelancer pastes the completed work (up to 3 attempts) and clicks **Submit work**.
+5. **Agent check & automatic settlement.**
+   - Code rules deterministically verify `min_words` and `must_include` items; the AI reviewer evaluates `ai` items with evidence quotes while treating the submission as untrusted data.
+   - **Pass:** Parable captures the PayPal authorization (`capture_authorization`, storing the capture ID before anything else) and sends the net payout to the freelancer via PayPal Payouts (`create_payout`).
+   - **Fail:** The checklist shows which items passed or failed with reasons, and the money stays safely held in PayPal for another attempt or a client decision (**Release anyway** or **Cancel and return money** via `void_authorization`).
+6. **Hash-chained ledger.** Every deal event (`deal.created`, `deal.funded`, `deal.submitted`, `deal.checked`, `deal.released`, `deal.returned`) is recorded on the public SHA-256 hash-chained ledger without exposing emails, the brief, the work text, or PayPal IDs.
+
+### Try Parable Deals in mock mode in 2 commands
+
+Command 1 — build the frontend:
+```bash
+cd frontend && npm install && npm run build
+```
+
+Command 2 — start the server (offline mock PayPal):
+```bash
+mkdir -p /tmp/deals && cd engine && PARABLE_MOCK_PAYPAL=1 PARABLE_DEMO_SEED=1 BOT_INTERVAL_S=5 AI_FREE_TRIES_PER_DAY=40 DATABASE_PATH=/tmp/deals/db.sqlite uv run uvicorn parable.api:app --port 8000
+```
+Open http://localhost:8000 (`/#deals`), click **Sign in with PayPal**, pick an example brief chip, click **Build the agent** → **Create deal** → **Hold with PayPal**, then open the freelancer link in a second tab and submit work.
+
+---
+
+## 2. Second vertical — Trading Agents ("Pay only when the proof passes")
+
+Parable is also an agent workshop and marketplace for paper-trading strategies where buyers can re-run backtest proofs deterministically and buy with PayPal hold-or-instant settlement. It is paper trading only. No real orders are ever placed.
+
+### The problem in trading agents
 
 Anyone can show a backtest that looks great. Backtest means "pretend to trade on old prices to see what would have happened". A seller can pick the best dates, hide the runs that failed, or just make the numbers up. Buyers cannot check, so trading-bot scams are easy. Parable tries to make the check cheap: the buyer can run the same test again, on the same stored prices, and see if the numbers match exactly.
 
