@@ -224,10 +224,10 @@ Open https://devpost.com, find the PayPal AI Hackathon, click **Enter a submissi
 - [ ] Hosted link: the Render address
 - [ ] Testing instructions and sandbox login details, with the placeholders replaced by real sandbox emails and passwords (they are fake accounts, but still do not use a real PayPal login)
 - [ ] Demo video, 2 minutes 50 seconds at most, uploaded to YouTube or Vimeo as **Public** or **Unlisted** and linked (`docs/VIDEO_SCRIPT.md`)
-- [ ] Screenshots (at least 3) uploaded to the gallery and added to the README (the README has a TODO for this)
+- [ ] Screenshots (at least 3) uploaded to the gallery (they are already in `docs/images/` and linked in the README)
 - [ ] Cover image
 - [ ] The Render service is running and has been tested after the last deploy
-- [ ] README section "Screenshots" filled in or removed
+- [x] README section "Screenshots" filled in
 - [ ] Submit before 12 Nov 2026, 12:00 PT. After submitting, open the public project page and check every link in a private window.
 
 ## Known security gaps (not fixed)

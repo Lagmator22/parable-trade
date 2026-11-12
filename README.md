@@ -218,7 +218,33 @@ Kept from the old version: the idea that results must be checkable, the hash-cha
 
 ## Screenshots
 
-TODO (owner): add screenshots of the Build page, an Agent page with the re-run result, a Purchase page, and the Ledger page. Save them in `docs/images/` and link them here.
+![Market](docs/images/market.png)
+
+The market: every card shows the backtest return next to buy and hold.
+
+![Agent page](docs/images/agent.png)
+
+An agent page with the proof chart and its numbers.
+
+![Re-run the proof](docs/images/rerun.png)
+
+Re-running the proof gives the same hashes, so the stamp says MATCH.
+
+![Build](docs/images/build.png)
+
+Build page: a strategy backtested on real data with buy and sell markers.
+
+![Model benchmark](docs/images/benchmark.png)
+
+Benchmark several AI models on the same strategy against buy and hold.
+
+![Purchase](docs/images/purchase.png)
+
+A pay-if-proven purchase in the middle of its live trial.
+
+![Ledger](docs/images/ledger.png)
+
+The public hash-chained ledger.
 
 ## Limits and disclaimers
 
