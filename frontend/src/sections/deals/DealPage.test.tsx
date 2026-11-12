@@ -66,7 +66,7 @@ afterEach(() => vi.unstubAllGlobals());
 test('client mock funding moves deal from draft to funded and reveals share link', async () => {
   const view = await mount(<DealPage id="dl_1" me={me} info={mockInfo}/>);
   await flush(4);
-  const holdBtn = [...view.host.querySelectorAll('button')].find(b => b.textContent?.includes('Hold $25.00 with PayPal (simulated)'))!;
+  const holdBtn = [...view.host.querySelectorAll('button')].find(b => b.textContent?.includes('Hold $25.00 with PayPal'))!;
   expect(holdBtn).toBeDefined();
 
   await view.click(holdBtn);

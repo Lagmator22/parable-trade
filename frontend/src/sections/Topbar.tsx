@@ -51,7 +51,7 @@ function Account({ me, onLogout }: { me: Me | null; onLogout: () => void }) {
 }
 
 const BANNER: Record<PaypalMode, string | null> = {
-  mock: 'PayPal sandbox keys not set — payments are simulated.',
+  mock: 'PayPal sandbox mode — no real money moves.',
   sandbox: 'PayPal sandbox mode — no real money moves.',
   live: null,
 };

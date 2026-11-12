@@ -25,6 +25,7 @@ export default function App() {
   const me = usePoll(fetchMe, { every: 20000 });
   const [buying, setBuying] = useState<PublicListing | null>(null);
 
+  useEffect(() => { document.title = 'Parable — Pay when the work passes'; }, []);
   useEffect(() => { window.scrollTo(0, 0); }, [route.page, route.id]);
   useEffect(() => {
     if (!me.data?.seller) return;

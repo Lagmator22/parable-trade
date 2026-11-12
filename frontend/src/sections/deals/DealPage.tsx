@@ -172,7 +172,7 @@ export function DealPage({ id, info }: Props) {
           {mocked ? (
             <div className="actions">
               <Button variant="solid" disabled={busy} onClick={() => runAction(async () => fundDeal(dealId, (await orderDeal(dealId)).paypal_order_id))}>
-                {`Hold ${cents(deal.amount_cents)} with PayPal (simulated)`}
+                {`Hold ${cents(deal.amount_cents)} with PayPal`}
               </Button>
             </div>
           ) : (
