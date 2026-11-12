@@ -13,6 +13,7 @@ from parable.guard import RequestGuard, script_hashes
 from parable.db import get_db
 from parable.paypal_routes import router as paypal_router
 from parable.routes_agents import router as agents_router
+from parable.routes_deals import router as deals_router
 from parable.routes_lab import router as lab_router
 from parable.routes_market import router as market_router
 from parable.routes_purchases import router as purchases_router
@@ -86,7 +87,7 @@ def create_app(dist: Path = FRONTEND_DIST) -> FastAPI:
     app = FastAPI(title="Parable", lifespan=lifespan, **docs)
     install_error_handlers(app)
     for router in (identity.router, webhooks.router, lab_router, agents_router, market_router, purchases_router,
-                   runs_router, paypal_router):
+                   runs_router, paypal_router, deals_router):
         app.include_router(router)
     register_frontend(app, dist)
     app.add_middleware(RequestGuard, hashes=inline_hashes(dist))
