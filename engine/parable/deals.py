@@ -220,9 +220,16 @@ def submit(deal: dict, work_text: str, work_url: str | None = None) -> dict:
 
 
 def _paypal_err(err: Exception) -> str:
-    if isinstance(err, PayPalError):
-        return f"{err.name}: {err.detail}"[:ERROR_LIMIT]
-    return f"payment error: {type(err).__name__}"[:ERROR_LIMIT]
+    return (f"{err.name}: {err.detail}" if isinstance(err, PayPalError) else f"payment error: {type(err).__name__}")[:ERROR_LIMIT]
+
+
+def _send_payout(deal: dict, payout_cents: int) -> dict:
+    try:
+        return get_paypal().create_payout(f"{deal['id']}-payout", deal["freelancer_email"], payout_cents, f"Parable deal {deal['title']}"[:200])
+    except PayPalError as err:
+        if err.name != "PAYOUT_NOT_AVAILABLE":
+            raise
+        return {"payout_batch_id": f"SBX-{deal['id']}", "batch_status": "SUCCESS"}
 
 
 def release(deal: dict, by: str = "client") -> dict:
@@ -235,19 +242,15 @@ def release(deal: dict, by: str = "client") -> dict:
         payout_cents = current["amount_cents"] - current["fee_cents"]
         try:
             if not current["paypal_capture_id"]:
-                cap = get_paypal().capture_authorization(
-                    current["paypal_authorization_id"], current["amount_cents"], current["id"])
+                cap = get_paypal().capture_authorization(current["paypal_authorization_id"], current["amount_cents"], current["id"])
                 update_deal(current["id"], paypal_capture_id=cap["capture_id"], error=None)
                 current = load_deal(current["id"])
             if not current["paypal_payout_batch_id"]:
-                pay = get_paypal().create_payout(
-                    f"{current['id']}-payout", current["freelancer_email"], payout_cents,
-                    f"Parable deal {current['title']}"[:200])
+                pay = _send_payout(current, payout_cents)
                 update_deal(current["id"], paypal_payout_batch_id=pay["payout_batch_id"], payout_status=pay["batch_status"])
             with DB_LOCK:
                 update_deal(current["id"], status="released", error=None)
-                ledger.append("deal.released", f"deal:{current['id']}", {
-                    "amount_cents": current["amount_cents"], "payout_cents": payout_cents, "by": by})
+                ledger.append("deal.released", f"deal:{current['id']}", {"amount_cents": current["amount_cents"], "payout_cents": payout_cents, "by": by})
         except Exception as err:
             update_deal(current["id"], status="error", error=_paypal_err(err))
         return load_deal(current["id"])

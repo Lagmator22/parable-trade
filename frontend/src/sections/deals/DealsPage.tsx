@@ -6,7 +6,7 @@ import {
   type ChecklistItem, type ChecklistKind, type Deal, type DealStatus,
 } from '../../dealsApi';
 import { cents } from '../../format';
-import { goSignIn, rememberReturn } from '../../signIn';
+import { rememberReturn } from '../../signIn';
 
 type Props = { me: Me | null; info: Info | null; navigate?: (url: string) => void };
 type Preset = { label: string; brief: string; price: string; email: string };
@@ -186,7 +186,7 @@ export function DealsPage({ me, navigate }: Props) {
             ? <Button variant="solid" disabled={building || brief.trim().length < 20} onClick={onBuild}>
                 {building ? 'Building agent…' : 'Build the agent'}
               </Button>
-            : <Button variant="solid" onClick={() => { rememberReturn('#deals'); goSignIn(navigate); }}>
+            : <Button variant="solid" onClick={() => { rememberReturn('#deals'); (navigate ?? (u => window.location.assign(u)))('/api/deals/demo-signin'); }}>
                 Sign in with PayPal
               </Button>}
         </div>

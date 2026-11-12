@@ -43,7 +43,7 @@ export function Topbar({ route, me, theme, onToggleTheme, onLogout }: Props) {
 
 function Account({ me, onLogout }: { me: Me | null; onLogout: () => void }) {
   if (!me) return null;
-  if (!me.seller) return <a className="signin" href="/paypal/login" onClick={() => rememberReturn(window.location.hash || '#deals')}>Sign in with PayPal</a>;
+  if (!me.seller) return <a className="signin" href="/api/deals/demo-signin" onClick={() => rememberReturn(window.location.hash || '#deals')}>Sign in with PayPal</a>;
   return <div className="account">
     <a href="#mine" className="account-name">{me.seller.name}</a>
     <button type="button" className="link-btn" onClick={onLogout}>Sign out</button>

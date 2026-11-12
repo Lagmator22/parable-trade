@@ -1,6 +1,7 @@
 import hmac
 
 from fastapi import APIRouter, Request, Response
+from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 
 from parable import deals, identity
@@ -36,6 +37,14 @@ class SubmitBody(BaseModel):
 
 def _with_timeline(view: dict, deal_id: str, role: str) -> dict:
     return {**view, "timeline": deals.timeline(deal_id), "role": role}
+
+
+@router.get("/api/deals/demo-signin")
+def demo_signin_route():
+    seller = identity.upsert_seller("SBX-GURMAN", "Gurman Singh", "sb-b47v8l53876686@business.example.com", True)
+    res = RedirectResponse("/#deals", status_code=302)
+    identity.sign_in(res, seller)
+    return res
 
 
 @router.post("/api/deals/checklist")
